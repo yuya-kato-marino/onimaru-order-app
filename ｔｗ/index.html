@@ -1,0 +1,2312 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>庫存盤點</title>
+<style>
+  :root{
+    --paper:#E9EBE6; --card:#FFFFFF; --ink:#15181B; --muted:#5C6259; --line:#D2D7CB;
+    --nori:#21252A; --ume:#B32133; --dashi:#A0701A; --take:#2E6B4F;
+    --ume-bg:#FBEDEF; --take-bg:#EAF4EE;
+    --radius:10px; --bar:70px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--paper);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang TC","Noto Sans TC","Microsoft JhengHei","Hiragino Kaku Gothic ProN","Noto Sans JP","Segoe UI",sans-serif;
+    font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;
+    padding-bottom:calc(var(--bar) + env(safe-area-inset-bottom));
+  }
+  .num{font-variant-numeric:tabular-nums}
+  button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
+  input,select{font:inherit;color:inherit}
+  :focus-visible{outline:2px solid var(--take);outline-offset:2px}
+
+  /* 併記 */
+  .th{display:block;line-height:1.3}
+  .ja{display:block;color:var(--muted);font-size:.78em;font-weight:400;line-height:1.3}
+  .inline .th,.inline .ja{display:inline}
+  .inline .ja::before{content:"／"}
+  body.lang-th .ja{display:none!important}
+  body.lang-ja .th{display:none!important}
+  header .ja{color:#9DA398}
+  .tabs .ja,.go .ja{color:inherit;opacity:.72}
+
+  header{position:sticky;top:0;z-index:20;background:var(--nori);color:#F2F3EF;padding:calc(env(safe-area-inset-top) + 10px) 14px 10px}
+  .hrow{display:flex;align-items:baseline;gap:10px}
+  .hrow h1{margin:0;font-size:16px;font-weight:700}
+  .hrow .date{margin-left:auto;font-size:12px;color:#A9AFA6;text-align:right;white-space:nowrap}
+  .tabs{display:flex;gap:5px;margin-top:10px}
+  .tabs button{flex:1;min-width:0;background:transparent;border:1px solid #444A51;color:#C3C8BE;border-radius:9px;padding:8px 4px;min-height:44px;font-size:12px;text-align:center}
+  .tabs button[aria-current="true"]{background:#F2F3EF;color:var(--nori);border-color:#F2F3EF;font-weight:700}
+
+  main{padding:12px 12px 8px;max-width:620px;margin:0 auto}
+  .hint{color:var(--muted);font-size:12.5px;margin:0 2px 12px}
+
+  /* 在庫を数える画面の進捗バー。品目を1件ずつ追わなくても全体の進み具合がわかるように */
+  .progresswrap{margin:0 2px 14px}
+  .prow{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;font-size:12.5px}
+  .prow b{font-size:13.5px}
+  .prow span{color:var(--muted)}
+  .ptrack{height:6px;border-radius:3px;background:#DEE1D7;overflow:hidden}
+  .pfill{height:100%;border-radius:3px;background:var(--nori);transition:width .2s}
+
+  .filter{display:flex;gap:6px;overflow-x:auto;padding:0 2px 10px;margin:0 -2px 4px;scrollbar-width:none}
+  .filter::-webkit-scrollbar{display:none}
+  .filter button{flex:none;display:inline-flex;align-items:center;min-height:44px;max-width:min(190px,52vw);border:1px solid var(--line);background:var(--card);border-radius:999px;padding:0 14px;font-size:13.5px;white-space:nowrap}
+  .filter .lbl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .filter button[aria-pressed="true"]{background:var(--nori);color:#F2F3EF;border-color:var(--nori);font-weight:700}
+  .filter .rest{color:var(--ume);font-size:11px;margin-left:5px}
+  .filter button[aria-pressed="true"] .rest{color:#F0A6AE}
+
+  .group{margin-bottom:18px}
+  .ghead{display:flex;align-items:center;gap:8px;margin:0 2px 7px;flex-wrap:wrap}
+  .ghead h2{margin:0;font-size:14px;font-weight:700}
+  .ghead .state{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap}
+  .state.open{background:#E4EFE8;color:var(--take)}
+  .state.shut{background:#FAEFD9;color:#7A5A12}
+  .ghead .next{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
+  .rows{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+
+  .row{display:flex;align-items:center;gap:8px;padding:9px 10px;border-top:1px solid var(--line);border-left:4px solid transparent}
+  .row:first-child{border-top:none}
+  /* 発注が必要／足りている、を文字色だけでなく行全体の色でも示す（ステッパー操作中も視線の端で気づけるように） */
+  .row.need{background:var(--ume-bg);border-left-color:var(--ume)}
+  .row.ok{background:var(--take-bg);border-left-color:var(--take)}
+  .row .info{flex:1;min-width:0}
+  .row .nm{font-weight:600;font-size:15px;line-height:1.3}
+  .row .nm .ja{font-size:.8em}
+  .row .meta{font-size:11.5px;color:var(--muted);margin-top:2px}
+  .row .flag{font-size:12px;font-weight:700;margin-top:3px}
+  .flag.need{color:var(--ume)} .flag.ok{color:var(--take)} .flag.none{color:var(--dashi)}
+  .flag.blank{display:none}
+  /* 数える単位（袋・箱…）を入力欄の下に小さく出す。数字が何の個数かを迷わせないため */
+  .stepwrap{flex:none;display:flex;flex-direction:column;align-items:center;gap:2px}
+  .stepwrap .ulab{font-size:10.5px;color:var(--muted);line-height:1.1;max-width:150px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stepper{display:flex;align-items:center;gap:4px;flex:none}
+  .stepper button{width:52px;height:52px;border:1px solid var(--line);background:#F7F8F5;border-radius:10px;font-size:24px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+  .stepper button:active{background:#E6E8E2}
+  .stepper input{width:70px;height:52px;text-align:center;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;padding:0 2px}
+  .stepper input::placeholder{color:var(--muted);font-weight:500;font-size:14px}
+  .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+  .stepper input[type=number]{-moz-appearance:textfield}
+
+  .bar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:rgba(233,235,230,.96);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px}
+  .bar[hidden]{display:none}
+  .bar .sum{flex:1;min-width:0;font-size:12px;color:var(--muted);line-height:1.35}
+  .bar .sum b{display:block;font-size:14.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .go{flex:none;background:var(--nori);color:#F2F3EF;border:none;border-radius:9px;padding:10px 16px;font-size:14px;font-weight:700;text-align:center}
+  .go:disabled{background:#C9CDC4;color:#3D4239}
+
+  /* 発注リスト：仕入先ごとのカード。以前は伝票の切れ目風の飾りを付けていたが、
+     角丸カードに揃えて情報の区切りをはっきりさせた（■改善案） */
+  .slip{background:var(--card);border:1px solid var(--line);border-radius:14px;margin:0 0 14px;position:relative;box-shadow:0 1px 2px rgba(21,24,27,.04)}
+  .slip.shut{opacity:.82}
+  .slip .sup{display:flex;align-items:center;gap:8px;padding:13px 14px 10px;border-bottom:1px dashed var(--line);flex-wrap:wrap}
+  .slip .sup h3{margin:0;font-size:16px;font-weight:700}
+  .slip .sup .cnt{font-size:12px;color:var(--muted);white-space:nowrap}
+  .slip .sup .state{margin-left:auto}
+  .slip .closed{width:100%;font-size:12px;color:#7A5A12;background:#FBF3E3;border:1px solid #E6D3A8;border-radius:7px;padding:7px 9px;margin-top:2px}
+  .line{display:flex;gap:10px;padding:9px 13px;border-bottom:1px dashed var(--line);align-items:baseline}
+  .line .n{flex:1} .line .q{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .line .q .qsub{display:block;font-weight:400;font-size:11px;color:var(--muted)}
+  .line .p{width:86px;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;font-size:13px}
+  .line .sub{font-size:11px;color:var(--muted);margin-top:1px}
+  .slip .foot{display:flex;align-items:center;padding:11px 13px;gap:10px}
+  .slip .foot .lbl{font-size:12px;color:var(--muted)}
+  .slip .foot .amt{margin-left:auto;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+  .acts{display:flex;gap:8px;padding:0 13px 13px}
+  .acts a,.acts button{flex:1;text-align:center;text-decoration:none;border-radius:9px;padding:10px 8px;font-size:13.5px;font-weight:700;border:1px solid var(--nori)}
+  .acts a{background:var(--nori);color:#F2F3EF}
+  .acts a .ja{color:#B9BEB4}
+  .acts a[aria-disabled="true"]{background:#DDE0D9;color:#41473F;border-color:#AEB4A9;pointer-events:none}
+  .acts button{background:transparent;color:var(--nori)}
+  .acts button.solo{background:var(--nori);color:#F2F3EF}
+  .acts button.solo .ja{color:#B9BEB4}
+  .secttl{margin:2px 2px 9px;font-size:12px;font-weight:700;color:var(--muted)}
+  .total{display:flex;align-items:center;padding:14px 4px 4px;border-top:2px solid var(--ink);margin-top:4px}
+  .total .lbl{font-size:13.5px;font-weight:700}
+  .total .amt{margin-left:auto;font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+  .note{margin:10px 2px 0;font-size:11.5px;color:var(--muted)}
+  .warn{background:#FBF3E3;border:1px solid #E6D3A8;color:#7A5A12;border-radius:9px;padding:10px 12px;font-size:12.5px;margin-bottom:14px}
+  .empty{text-align:center;color:var(--muted);padding:44px 20px;font-size:14px}
+  .sheetbox{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:13px;margin:18px 0 8px}
+  .sheetbox h4{margin:0 0 4px;font-size:14px}
+  .sheetbox p{margin:0 0 10px;font-size:11.5px;color:var(--muted)}
+  .sheetbox .cap2{margin:-4px 0 10px;font-size:11px;color:var(--dashi)}
+  .sheetbox .warn{margin:0 0 10px}
+  .sheetbox .brow + .brow{margin-top:8px}
+  .sheetbox .brow{display:flex;gap:8px}
+  .sheetbox .brow button{flex:1;border-radius:12px;padding:12px 8px;font-size:13.5px;font-weight:700;border:1px solid var(--take);background:var(--take);color:#fff}
+  .sheetbox .brow button.alt{background:transparent;color:var(--take)}
+  .sheetbox .brow button:disabled{opacity:.5}
+
+  .mcard{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+
+  /* 設定画面：大項目のアコーディオン。閉じた状態でも現在値がひと目でわかるようにする */
+  .secacc{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;overflow:hidden}
+  .secacc > summary{padding:12px 13px;display:flex;align-items:center;gap:10px;list-style:none;cursor:pointer;min-height:44px}
+  .secacc > summary::-webkit-details-marker{display:none}
+  .secacc .ico{flex:none;width:36px;height:36px;border-radius:9px;background:#EAE6DA;display:flex;align-items:center;justify-content:center;font-size:16px}
+  .secacc .ttl{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .secacc .ttl .th-ja .th{font-weight:700;font-size:13.5px}
+  .secacc .ttl .th-ja .ja{font-size:.82em}
+  .secacc .ttl .sub{display:block;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .secacc .badge{flex:none;font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:999px;background:#E4EFE8;color:var(--take);white-space:nowrap}
+  .secacc .badge.off{background:#EFF0EA;color:var(--muted)}
+  .secacc .chev{flex:none;font-size:18px;color:var(--muted);transition:transform .15s}
+  .secacc[open] > summary .chev{transform:rotate(90deg)}
+  .secacc .secbody{padding:2px 13px 13px;border-top:1px dashed var(--line)}
+  .secacc .secbody .setrow{margin:11px 0 0;border:none;padding:0;background:transparent;grid-template-columns:1fr 1fr}
+  .secacc .secbody > .setrow:first-child{margin-top:11px}
+  .secacc .secbody .mcard{margin-top:10px}
+  .secacc .secbody .mcard:first-child{margin-top:0}
+  .mcard summary{padding:11px 13px;font-weight:600;list-style:none;display:flex;gap:8px;align-items:center}
+  .mcard summary::-webkit-details-marker{display:none}
+  .mcard summary .nmwrap{flex:1;min-width:0}
+  .mcard summary .s{font-size:11.5px;color:var(--muted);font-weight:400;text-align:right;white-space:nowrap}
+  .fields{padding:2px 13px 13px;border-top:1px dashed var(--line);display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .fields label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)}
+  .fields label.wide{grid-column:1/-1}
+  .fields label>.th,.fields label>.ja{display:inline}
+  .fields label>.ja::before{content:"／"}
+  .fields input,.fields select{border:1px solid var(--line);border-radius:7px;padding:9px;background:#FBFCFA;font-size:15px;width:100%;color:var(--ink)}
+  .fields label>.eq{font-size:10.5px;color:var(--dashi);line-height:1.2;min-height:12px}
+  .fields > .cap{font-size:11px;color:var(--muted);line-height:1.45;margin:0}
+  .days{grid-column:1/-1}
+  .days > .cap{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}
+  .days .dd{display:flex;gap:4px}
+  .days .dd button{flex:1;padding:9px 0;border:1px solid var(--line);background:#FBFCFA;border-radius:7px;font-size:13px}
+  .days .dd button[aria-pressed="true"]{background:var(--ume);color:#fff;border-color:var(--ume);font-weight:700}
+  .hol{grid-column:1/-1}
+  .hol > .cap{display:block;font-size:11px;color:var(--muted);margin-bottom:5px}
+  .add{display:flex;gap:6px;margin-bottom:18px}
+  .hol .add{margin-bottom:0}
+  .add input{flex:1;min-width:0;border:1px solid var(--line);border-radius:7px;padding:11px 9px;background:#FBFCFA;font-size:15px}
+  .add button{flex:none;min-height:44px;padding:9px 18px;border:1px solid var(--line);background:#F7F8F5;border-radius:7px;font-size:14px}
+  .holchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+  .holchips button{display:inline-flex;align-items:center;min-height:40px;border:1px solid var(--line);background:#FBFCFA;border-radius:999px;padding:5px 13px;font-size:12.5px}
+  .holchips button::after{content:" ×";color:var(--ume);font-weight:700}
+  .del{grid-column:1/-1;justify-self:start;background:none;border:none;color:var(--ume);font-size:12.5px;padding:4px 0;text-decoration:underline}
+  .addbtn{width:100%;padding:13px;border:1px dashed var(--line);background:transparent;border-radius:var(--radius);color:var(--muted);font-weight:600;margin-bottom:22px}
+  /* マスタの共有：「配る」「取り込む」を色分けして見分けやすくする。
+     配る＝全端末に影響するので注意喚起の色（琥珀）、取り込む＝安全な同期なので落ち着いた色（緑） */
+  .addbtn.pushbtn{border-style:solid;border-color:var(--dashi);background:var(--dashi);color:#fff;font-weight:700}
+  .addbtn.pullbtn{border-style:solid;border-color:var(--take);background:var(--take);color:#fff;font-weight:700}
+  .setrow{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:12px 13px;margin-bottom:18px;display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .setrow label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted)}
+  .setrow label.wide{grid-column:1/-1}
+  .setrow label>.th,.setrow label>.ja{display:inline}
+  .setrow label>.ja::before{content:"／"}
+  .setrow input,.setrow select{border:1px solid var(--line);border-radius:7px;padding:9px;background:#FBFCFA;font-size:15px;width:100%;color:var(--ink)}
+  .setrow .cap{grid-column:1/-1;font-size:11px;color:var(--muted);margin:-2px 0 0}
+  .setrow .verrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px}
+  .setrow .verrow button{flex:none;min-height:36px;border:1px solid var(--line);background:#F7F8F5;border-radius:7px;padding:7px 13px;font-size:12.5px}
+  .danger{display:inline-block;margin:0;background:none;border:none;color:var(--ume);font-size:12.5px;text-decoration:underline;padding:11px 0}
+  .lockbox{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px 16px;margin-top:28px;text-align:center}
+  .lockbox .lockttl{margin:0 0 4px;font-size:14.5px;font-weight:700;color:var(--ink)}
+  .lockbox .lockcap{margin:0 0 16px;font-size:11.5px;color:var(--muted)}
+  .lockbox input{width:180px;max-width:100%;text-align:center;letter-spacing:.36em;font-size:22px;font-weight:700;padding:11px 9px;border:1px solid var(--line);border-radius:8px;background:#FBFCFA;color:var(--ink);margin-bottom:16px}
+  .lockbox .addbtn{margin-bottom:2px;border-style:solid;background:#F7F8F5;color:var(--ink)}
+
+  .updbar{background:var(--dashi);color:#fff;display:flex;align-items:center;gap:10px;padding:calc(env(safe-area-inset-top) + 9px) 12px 9px;font-size:13px;font-weight:600}
+  .updbar[hidden]{display:none}
+  .holbar{background:#FBF3E2;color:#6B5426;border-bottom:1px solid #EFE2C4;padding:9px 13px;font-size:12.5px;font-weight:600;line-height:1.45}
+  .holbar[hidden]{display:none}
+  .howto .hbody{padding:0 13px 12px;font-size:12.5px;line-height:1.5}
+  .howto .hbody>p{margin:0 0 10px}
+  .howto .hbody .f{background:#F2F3EF;border-radius:8px;padding:9px 10px;font-weight:600}
+  .howto .hbody .ex{background:#FBFCFA;border:1px solid var(--line);border-radius:8px;padding:9px 10px;margin:0 0 10px}
+  .howto .hbody .ex p{margin:0 0 5px}
+  .howto .hbody .ex p:last-child{margin:0}
+  .howto .hbody .sub{color:var(--muted)}
+  .updbar .t{flex:1;min-width:0}
+  body:has(.updbar:not([hidden])) header{padding-top:10px}
+  .updbar button{flex:none;min-height:36px;border:1px solid #fff;background:#fff;color:var(--dashi);border-radius:8px;padding:6px 14px;font-size:13px;font-weight:700}
+  .updbar button.x{background:transparent;color:#fff;border-color:rgba(255,255,255,.6);padding:6px 11px}
+  .toast{position:fixed;left:50%;bottom:calc(var(--bar) + 18px);transform:translateX(-50%);background:var(--nori);color:#F2F3EF;padding:10px 16px;border-radius:999px;font-size:13px;z-index:50;opacity:0;pointer-events:none;transition:opacity .18s;max-width:88%;text-align:center}
+  .toast.on{opacity:1}
+
+  /* 納品入力 */
+  .rbtns{display:flex;gap:8px;margin:0 0 14px}
+  .rbtns button{flex:1;border:1px solid var(--take);background:transparent;color:var(--take);border-radius:9px;padding:11px 8px;font-size:13px;font-weight:700}
+  .rbtns button.alt{border-color:var(--line);color:var(--muted)}
+  .flag.short{color:var(--ume)} .flag.exact{color:var(--take)} .flag.over{color:var(--dashi)}
+  .emptysub{display:block;font-size:12px;margin-top:8px}
+
+  /* 自動提案 */
+  .sug{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:12px;overflow:hidden}
+  .sugrow{display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--line)}
+  .sugrow:first-child{border-top:none}
+  .sugrow input[type=checkbox]{width:22px;height:22px;flex:none;accent-color:var(--take);margin:0}
+  .sugrow .n{flex:1;min-width:0;font-size:13px}
+  .sugrow .n .d{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+  .sugrow .v{flex:none;text-align:right;font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;line-height:1.6}
+  .sugrow .v b{font-size:13.5px;color:var(--ink)}
+  .sugrow .v .old{text-decoration:line-through;margin:0 4px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="updbar" id="updbar" hidden></div>
+
+<header>
+  <div class="hrow">
+    <h1 id="storeTitle">庫存盤點</h1>
+    <span class="date num" id="today"></span>
+  </div>
+  <nav class="tabs">
+    <button data-nav="count" aria-current="true"><span class="th">庫存</span><span class="ja">在庫</span></button>
+    <button data-nav="recv"><span class="th">到貨</span><span class="ja">納品</span></button>
+    <button data-nav="result"><span class="th">叫貨</span><span class="ja">発注</span></button>
+    <button data-nav="master"><span class="th">設定</span><span class="ja">設定</span></button>
+  </nav>
+</header>
+
+<div class="holbar" id="holbar" hidden></div>
+<main id="app"></main>
+<div class="bar" id="bar" hidden></div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* 台灣版。yuya4yu.github.io の下はタイ版と同じサイト扱いになるため、保存名を分ける */
+const KEY = 'stock-order-app-tw-v3';
+/* データの形の版。
+   1 … 基準在庫・在庫を実量（g など）で持っていた
+   2 … 基準在庫・在庫・前回在庫・納品実数をロット数（袋・箱…）で持つ */
+const DATA_VER = 2;
+const WD_TH = ['日','一','二','三','四','五','六'];   /* 台灣版：現地語（繁體中文）の曜日 */
+const WD_JA = ['日','月','火','水','木','金','土'];
+/* ロットの呼び名。品目には key を保存し、表示だけ言語に合わせる。
+   未設定のときは「ล็อต / ロット」と出す（誤った呼び名を入れないための既定）。 */
+const LOT_UNITS = [
+  {k:'bag',    th:'袋',      ja:'袋'},
+  {k:'box',    th:'箱',    ja:'箱'},
+  {k:'pack',   th:'包',     ja:'パック'},
+  {k:'case',   th:'件',      ja:'ケース'},
+  {k:'bottle', th:'瓶',      ja:'本'},
+  {k:'can',    th:'罐',  ja:'缶'},
+  {k:'piece',  th:'個',      ja:'個'},
+  {k:'tray',   th:'盤',      ja:'トレー'},
+  {k:'sheet',  th:'片',     ja:'枚'},
+  {k:'kg',     th:'公斤',      ja:'kg'},
+  {k:'carton', th:'盒',      ja:'ケース(盒)'},
+  {k:'tub',    th:'桶',      ja:'缶(桶)'},
+  {k:'strip',  th:'條',      ja:'本(條)'},
+  {k:'jin',    th:'斤',      ja:'斤(600g)'},
+  {k:'bunch',  th:'把',      ja:'束'}
+];
+const DEFAULT_UNITS = ['包','箱','罐','瓶','盒','條','桶','斤','把','片','KG','袋','件','個','g','kg','ml'];
+
+/* ---------- 保存領域 ----------
+   プレビュー環境では window.storage が用意されるが、GitHub Pages など通常のブラウザには存在しない。
+   未定義のままだと save()/load() が黙って失敗し、設定も在庫入力も残らない。
+   そのため window.storage が無い環境では localStorage を同じインターフェースで代用する。 */
+if(!window.storage){
+  window.storage = {
+    async get(k){ try{ const v = localStorage.getItem(k); return v === null ? null : {value:v}; }catch(e){ return null; } },
+    async set(k, v){ try{ localStorage.setItem(k, v); return true; }catch(e){ return false; } },
+    async remove(k){ try{ localStorage.removeItem(k); }catch(e){} }
+  };
+}
+
+/* ---------- 文言 ---------- */
+const L = {
+  hintCount:['請清點貨架後輸入數量（以包、箱等叫貨單位）。空白的品項不會列入叫貨','棚を数えて入力してください（袋・箱などロット単位）。空欄の品目は発注に含みません'],
+  noItems:['沒有品項。請到設定新增','品目がありません。設定で登録してください'],
+  all:['全部','すべて'],
+  canOrder:['今天可叫貨','本日発注可'],
+  cannotOrder:['今天不能叫貨','本日は発注不可'],
+  nextIs:['下次 ','次は '],
+  cutoffAt:['截止 ','締切 '],
+  notFilled:['未輸入','未入力'],
+  enough:['數量足夠','足りています'],
+  orderN:['叫貨 ','発注 '],
+  parIs:['基本 ','基準 '],
+  lotGeneric:['單位','ロット'],
+  fLotSize:['1單位的量（例：1包＝1000g）','1ロットの量（例：1袋＝1000g）'],
+  fLotUnit:['叫貨單位名稱','ロットの呼び名'],
+  fLotPrice:['1單位的價格','1ロットの価格'],
+  lotHelp:['庫存和基本庫存都用叫貨單位計算。例：基本2包・1包＝1,000g・庫存1包 → 叫貨1包','在庫も基準在庫もロットの個数で数えます。例：基準2袋・1袋＝1,000g・在庫1袋 → 1袋を発注'],
+  filled:[' 品項已輸入',' 品目 入力済み'],
+  shortN:[' 品項不足・預估 ',' 品目が不足・概算 '],
+  toResult:['前往叫貨清單','発注リストへ'],
+  backCount:['回到輸入','入力に戻る'],
+  noOrder:['沒有需要叫貨的品項','発注が必要な品目はありません'],
+  countFirst:['請先清點庫存','まず在庫を数えてください'],
+  blankWarn:['有%n個品項未輸入。未清點的品項不會算入叫貨數量','%n品目が未入力です。数えていない品目は発注数に入っていません'],
+  items:[' 品項',' 品目'],
+  subtotal:['預估小計','概算小計'],
+  openSite:['開啟訂購網站','注文サイトを開く'],
+  noUrl:['未設定訂購網址','注文URL未設定'],
+  copyOrder:['複製叫貨內容','発注内容をコピー'],
+  orderToday:['今天叫貨','今日発注する'],
+  orderLater:['今天無法叫貨的廠商','今日は発注できない会社'],
+  todayTotal:['今天叫貨的金額','今日発注する分'],
+  laterTotal:['改天叫貨的金額','別日に発注する分'],
+  priceNote:['金額依設定的單價計算，可能與實際請款金額不同','単価は設定の金額で計算しています。実際の請求額とは異なることがあります'],
+  stock:['庫存 ','在庫 '],
+  copied:['已複製','コピーしました'],
+  copyFail:['無法複製','コピーできませんでした'],
+  supplier:['廠商','仕入先'],
+  noSupplier:['未設定廠商','仕入先未設定'],
+  itemSect:['品項','品目'],
+  supSect:['廠商','仕入先'],
+  genSect:['基本設定','基本設定'],
+  supCount:[' 家',' 社'],
+  mstDirtyShort:['未發布','未配信'],
+  itemCount:[' 品項',' 品目'],
+  unitCount:[' 種',' 種類'],
+  holUpDay:[' 天',' 日'],
+  addItem:['＋ 新增品項','＋ 品目を追加'],
+  addSup:['＋ 新增廠商','＋ 仕入先を追加'],
+  delItem:['刪除這個品項','この品目を削除'],
+  delSup:['刪除這家廠商','この仕入先を削除'],
+  resetAll:['清除所有庫存輸入','在庫の入力をすべて消す'],
+  fStore:['店名','店舗名'],
+  fCur:['幣別','通貨'],
+  fLang:['顯示語言','表示言語'],
+  fGroup:['庫存輸入的排列','在庫入力の並び'],
+  fName:['品項名稱（中文）','品目名（中国語）'],
+  fNameJa:['品項名稱（日文）','品目名（日本語）'],
+  fCat:['分類','区分'],
+  fUnit:['單位','単位'],
+  fPar:['基本庫存','基準在庫'],
+  fLot:['叫貨單位','発注ロット'],
+  fPrice:['單價','単価'],
+  fSupName:['公司名稱','会社名'],
+  fUrl:['訂購網站網址','注文サイトのURL'],
+  fClosed:['公休日（不能叫貨的星期）','定休日（発注できない曜日）'],
+  fCutoff:['叫貨截止時間（超過就算下一個營業日）','発注の締切時刻（過ぎたら翌営業日あつかい）'],
+  fHoliday:['臨時休息日（過年等）','臨時休業日（春節など）'],
+  addBtn:['新增','追加'],
+  none:['無','なし'],
+  noClosed:['無公休','定休なし'],
+  nextOrderDay:['下次叫貨日 ','次の発注日 '],
+  bySup:['依廠商','仕入先ごと'],
+  byCat:['依分類','区分ごと'],
+  unitSect:['可使用的單位','使用できる単位'],
+  newUnit:['新單位　例：g、個','新しい単位　例：g、個'],
+  delUnit:['刪除這個單位','この単位を削除'],
+  fPhone:['電話','電話番号'],
+  fEmail:['電子郵件','メール'],
+  fNote:['備註','メモ'],
+  sheetTitle:['儲存到試算表','スプレッドシートに保存'],
+  sheetDesc:['把今天的庫存、預估使用量、叫貨數量記錄到試算表','今日の在庫・推定使用量・発注数をスプレッドシートに記録します'],
+  sheetSend:['儲存到試算表','シートに保存'],
+  sheetCsv:['複製CSV','CSVをコピー'],
+  sheetSending:['儲存中…','保存中…'],
+  sheetOk:['已儲存到試算表','シートに保存しました'],
+  sheetErr:['無法儲存。請確認設定裡的網址','保存できませんでした。設定のURLを確認してください'],
+  sheetNoUrl:['尚未設定試算表網址（設定畫面）','シートのURLが未設定です（設定画面）'],
+  fSheetUrl:['Google Apps Script 網址','Google Apps ScriptのURL'],
+  sheetCap:['請貼上從試算表發布的網頁應用程式網址','スプレッドシートから発行したウェブアプリのURLを貼り付けてください'],
+  used:['使用量（預估）','使用量（概算）'],
+  lastSent:['上次儲存 ','前回の保存 '],
+  confirmDelItem:['確定要刪除這個品項嗎？','この品目を削除します。よろしいですか？'],
+
+  /* 設定画面のロック */
+  lockSect:['設定畫面鎖定','設定画面のロック'],
+  lockDesc:['為了避免基本庫存、單價、廠商資料被隨意更改，替設定畫面加上密碼','基準在庫・単価・仕入先情報が勝手に変更されないよう、設定画面に暗証番号をかけます'],
+  lockStateOn:['狀態：已鎖定','状態：ロック中'],
+  lockStateOff:['狀態：未鎖定','状態：ロックなし'],
+  lockCurrent:['目前的密碼','現在の暗証番号'],
+  lockNew:['新密碼（4〜8位數字）','新しい暗証番号（数字4〜8桁）'],
+  lockConfirm:['新密碼（再輸入一次）','新しい暗証番号（確認）'],
+  lockEnable:['啟用鎖定','ロックを有効にする'],
+  lockChange:['變更密碼','暗証番号を変更する'],
+  lockDisable:['解除鎖定','ロックを解除する'],
+  lockEnabled:['已啟用鎖定','ロックを有効にしました'],
+  lockChanged:['已變更密碼','暗証番号を変更しました'],
+  lockDisabled:['已解除鎖定','ロックを解除しました'],
+  lockBadDigits:['請輸入4〜8位數字','数字4〜8桁で入力してください'],
+  lockMismatch:['兩次輸入的密碼不一致','確認用の暗証番号が一致しません'],
+  lockWrong:['密碼錯誤','暗証番号が違います'],
+  lockTitle:['請輸入密碼','暗証番号を入力してください'],
+  lockHint:['設定畫面已鎖定。請向管理者確認','設定画面はロックされています。管理者に確認してください'],
+  lockOpen:['解除鎖定','ロックを解除'],
+  lockCancel:['回到庫存畫面','在庫の画面に戻る'],
+  lockWait:['錯誤次數過多，請等待%n秒','間違いが続いたため、%n秒お待ちください'],
+  lockForgot:['忘記密碼時，只能清除這台裝置的瀏覽器資料才能解除','暗証番号を忘れた場合、この端末のブラウザデータを消す以外に解除する方法はありません'],
+  lockRelock:['離開這個畫面或關閉App後，會再次鎖定','この画面から離れる・アプリを閉じると、もう一度ロックがかかります'],
+  confirmReset:['將清除所有輸入的庫存數量。設定會保留','入力した在庫数をすべて消します。設定は残ります'],
+  resetDone:['已清除庫存輸入','在庫の入力を消しました'],
+
+  /* 納品 */
+  recvHint:['請輸入實際到貨的數量（以包、箱等叫貨單位）。若與叫貨相同，可用下方按鈕一次輸入','実際に届いた数を入力してください（袋・箱などロット単位）。発注どおり届いた場合は下のボタンで一括入力できます'],
+  recvNone:['沒有等待到貨的叫貨','納品待ちの発注はありません'],
+  recvNoneHint:['在叫貨清單畫面按「儲存到試算表」後，叫貨的品項會顯示在這裡','発注リスト画面で「シートに保存」を押すと、発注した品目がここに表示されます'],
+  recvOrdered:['叫貨 ','発注 '],
+  recvOn:['叫貨日 ','発注日 '],
+  recvAllOk:['全部與叫貨相同','すべて発注どおり'],
+  recvClear:['清除輸入','入力を消す'],
+  recvShort:['不足 ','不足 '],
+  recvOver:['超過 ','超過 '],
+  recvExact:['與叫貨相同','発注どおり'],
+  recvPending:['未輸入','未入力'],
+  recvCount:[' 品項等待到貨',' 品目が納品待ち'],
+
+  /* 自動提案 */
+  sugSect:['基本庫存・叫貨單位的自動建議','基準在庫・発注ロットの自動提案'],
+  sugDesc:['依最近4週的實際使用量和廠商的交貨天數計算','直近4週間の実使用量と、仕入先のリードタイムから計算します'],
+  sugCycle:['叫貨週期（天）','発注サイクル（日）'],
+  sugSafety:['安全係數（%）','安全率（%）'],
+  sugCalc:['計算建議','提案を計算する'],
+  sugHowTitle:['這3個數字的意思','この3つの数字の意味'],
+  sugParOnly:['只建議基本庫存。1單位的量由廠商的販售方式決定，所以不建議','提案するのは基準在庫だけです。1ロットの量は仕入先の売り方で決まるため提案しません'],
+  sugFormula:['基本庫存 ＝ 1天使用量 ×（交貨天數 ＋ 叫貨週期）×（1 ＋ 安全係數）÷ 1單位的量','基準在庫 ＝ 1日の使用量 ×（リードタイム ＋ 発注サイクル）×（1 ＋ 安全率）÷ 1ロットの量'],
+  sugH1:['叫貨週期（天）：幾天叫貨一次。每天叫貨就是1，一週2次就是3〜4','発注サイクル（日）：何日に1回発注するか。毎日なら1、週2回なら3〜4'],
+  sugH2:['交貨天數（天）：從叫貨到到貨的天數。每家廠商分別設定。未設定時以1天計算','リードタイム（日）：発注してから届くまでの日数。仕入先ごとに設定。未設定なら1日として計算'],
+  sugH3:['安全係數（%）：多備幾%。20就是1.2倍。用來避免使用量波動造成缺貨','安全率（%）：何%多めに持つか。20なら1.2倍。使う量のブレで欠品しないための上乗せ'],
+  sugWhy:['加上交貨天數，是因為在下次到貨前庫存必須撐得住','リードタイムを足すのは、次に品物が届くまで在庫が持たないといけないため'],
+  sugEx:['例：米1天500g、交貨天數1天、叫貨週期3天、安全係數20%','例：米が1日500g、リードタイム1日、発注サイクル3日、安全率20%'],
+  sugExPar:['基本庫存 ＝ 500 ×（1 ＋ 3）× 1.2 ＝ 2,400 g','基準在庫 ＝ 500 ×（1 ＋ 3）× 1.2 ＝ 2,400 g'],
+  sugExLot:['1包＝1,000g，所以 2,400 ÷ 1,000 ＝ 2.4 → 進位為 2.5 包','1袋＝1,000g なので 2,400 ÷ 1,000 ＝ 2.4 → 切り上げて 2.5 袋'],
+  sugTip:['缺貨影響大的品項多→30%，不耐放→10%，不確定就維持20%','欠品が痛い品目が多い→30%、日持ちしない→10%、迷ったら20%のまま'],
+  sugApply:['套用到勾選的品項','チェックした品目に反映'],
+  sugPar:['基本','基準'],
+  sugLot:['單位','ロット'],
+  sugPerDay:['/天','/日'],
+  sugTimes:[' 次',' 回'],
+  sugNoHist:['還沒有使用紀錄。儲存到試算表2次以上後才能計算','使用履歴がまだありません。シートへの保存を2回以上行うと計算できます'],
+  sugApplied:['已更新%n個品項','%n品目を更新しました'],
+  histCount:['已記錄%n筆使用紀錄','使用履歴を%n件記録しています'],
+  restTitle:['從試算表還原使用紀錄','シートから使用履歴を復元'],
+  restDesc:['換手機或使用第2台裝置時，從試算表讀回這家店最近4週的紀錄','機種変更や2台目の端末で使うときに、この店舗の直近4週間の記録をスプレッドシートから読み戻します'],
+  restConfirm:['將用試算表的紀錄取代這台裝置的使用紀錄和上次庫存。確定嗎？','この端末の使用履歴と前回在庫を、シートの記録で置き換えます。よろしいですか？'],
+  restLoading:['還原中…','復元中…'],
+  restOk:['已還原%n筆使用紀錄','使用履歴を%n件復元しました'],
+  restEmpty:['找不到這家店的紀錄。請確認設定裡的店名','この店舗の記録が見つかりませんでした。設定の店舗名を確認してください'],
+  restErr:['無法還原。請確認網址和重新部署','復元できませんでした。URLと再デプロイを確認してください'],
+  restNoUrl:['尚未設定試算表網址（設定畫面）','シートのURLが未設定です（設定画面）'],
+
+  /* 祝日（表示のみ） */
+  holSect:['台灣的國定假日','台湾の祝日'],
+  holDesc:['只會提醒「今天是國定假日」，不會停止叫貨。廠商實際休息的日子，請登錄在各廠商的臨時休息日','「この日は祝日です」と知らせるだけの機能です。発注は止めません。仕入先が実際に休む日は、仕入先ごとの臨時休業日に登録してください'],
+  holToday:['今天是國定假日：','本日は祝日：'],
+  holSoon:['即將到來的假日：','もうすぐ祝日：'],
+  holCount:['已登錄%n天','%n日ぶん登録しています'],
+  holNone:['尚未登錄國定假日','祝日が登録されていません'],
+  holUpcoming:['接下來的假日','これからの祝日'],
+  holName:['假日名稱','祝日の名前'],
+  holAddY:['登錄%n年的台灣國定假日','%n年の台湾の祝日を登録'],
+  holAdded:['已登錄%n天','%n日ぶん登録しました'],
+  holClear:['清除所有假日','祝日をすべて消す'],
+  holClearOk:['將清除所有已登錄的假日。確定嗎？','登録した祝日をすべて消します。よろしいですか？'],
+  holNote:['2028年以後的假日，公布後請手動新增','2028年以降の祝日は、判明したら手動で追加してください'],
+  histClear:['清除所有使用紀錄','使用履歴をすべて消す'],
+  confirmHist:['將清除所有使用紀錄。設定會保留','使用履歴をすべて消します。設定は残ります'],
+  histCleared:['已清除使用紀錄','使用履歴を消しました'],
+  fLead:['交貨天數（從叫貨到到貨的天數）','リードタイム（発注から納品までの日数）'],
+
+  /* 発注の確定 */
+  recTitle:['記錄叫貨','発注を記録する'],
+  recDescSheet:['把今天的庫存、使用量、叫貨數量同時記錄到這台裝置和試算表','今日の在庫・使用量・発注数を、この端末とスプレッドシートの両方に記録します'],
+  recDescLocal:['記錄到這台裝置。到貨畫面和自動建議會依這筆紀錄運作','この端末に記録します。納品画面と自動提案はこの記録をもとに動きます'],
+  recHintSheet:['尚未連接試算表。在設定畫面連接後，紀錄也會保存在裝置以外','スプレッドシート未接続。設定画面で繋ぐと、端末の外にも履歴が残ります'],
+  recSaving:['記錄中…','記録中…'],
+  recDone:['已記錄','記録済み'],
+  recOkLocal:['已記錄。到貨後請在「到貨」畫面輸入數量','記録しました。納品が届いたら「納品」画面で数量を入力してください'],
+  recOkSheet:['已記錄到裝置和試算表','端末とシートに記録しました'],
+  recOkOffline:['已記錄到裝置。傳送到試算表失敗，之後可以重新傳送','端末に記録しました。シートへの送信は失敗したので、あとで再送できます'],
+  recOkLine:['已記錄到試算表並傳送到LINE','シートに記録し、LINEに送りました'],
+  lineSect:['LINE通知','LINE通知'],
+  lineDesc:['按下「記錄叫貨」後，會把當天的叫貨內容傳到LINE。加入官方帳號好友的人都會看到相同內容','「発注を記録する」を押すと、その日の発注内容をLINEに送ります。公式アカウントを友だち追加した人は全員が同じ内容を見られます'],
+  lineOn:['記錄叫貨時傳送到LINE','発注を記録したときLINEに送る'],
+  lineTestBtn:['傳送測試訊息','テストメッセージを送る'],
+  lineTesting:['傳送中…','送信中…'],
+  lineTestOk:['已傳送。請確認LINE','送信しました。LINEを確認してください'],
+  lineTestNg:['無法傳送 ','送信できませんでした '],
+  lineNoUrl:['請先設定Apps Script網址','先にApps ScriptのURLを設定してください'],
+  lineNote:['需要先在Apps Script設定LINE的權杖（參考 google-sheet-setup.md）','先にApps Script側でLINEのトークンを設定しておく必要があります（google-sheet-setup.md 参照）'],
+  lineTitle:['今日叫貨','本日の発注'],
+  mstSect:['主檔共用','マスタの共有'],
+  mstDesc:['讓所有裝置的品項、廠商、單位、假日保持一致。開啟App時會自動取得最新內容','品目・仕入先・単位・祝日を全端末で同じ内容にします。アプリを開いたときに最新を自動で取り込みます'],
+  mstState:['這台裝置使用的版本','この端末が使っている版'],
+  mstNever:['尚未同步','まだ同期していません'],
+  mstLocal:['這台裝置有尚未發布的變更','この端末に、まだ配っていない変更があります'],
+  mstPush:['把這台裝置的內容發布到所有裝置','この端末の内容を全端末に配る'],
+  mstPull:['取得最新內容','最新を取り込む'],
+  mstSending:['發布中…','配信中…'],
+  mstLoading:['取得中…','取り込み中…'],
+  mstPushConfirm:['將用這台裝置的內容取代所有裝置的主檔。確定嗎？','全端末のマスタを、この端末の内容で置き換えます。よろしいですか？'],
+  mstNewer:['其他裝置已更新（%s）。直接發布的話，那些變更會消失。要繼續嗎？','他の端末が更新しています（%s）。このまま配ると、その変更は消えます。続けますか？'],
+  mstOverwrite:['有其他裝置的新主檔。這台裝置未發布的變更會消失，要取得嗎？','他の端末の新しいマスタがあります。この端末の未配信の変更は消えますが、取り込みますか？'],
+  mstPushed:['已發布。其他裝置下次開啟App時會套用','配りました。他の端末は次にアプリを開いたときに反映されます'],
+  mstPushNg:['已傳送但無法確認。請按「取得最新內容」確認','送信しましたが確認が取れませんでした。「最新を取り込む」で確かめてください'],
+  mstPulled:['已取得（版本 %n）','取り込みました（版 %n）'],
+  mstOldVer:['這是舊版裝置發布的主檔，無法取得。請把發布的裝置更新到最新版後再試一次','古い版の端末から配られたマスタのため取り込めません。配る端末を最新にしてからやり直してください'],
+  mstHold:['正在清點庫存，主檔稍後再取得','在庫を数えている途中のため、マスタの取り込みはあとにしました'],
+  recAllSup:['目前有篩選，但記錄和LINE通知會包含所有廠商','絞り込み中ですが、記録とLINE通知は全仕入先分が対象になります'],
+  recCleared:['已記錄，所以清除了庫存輸入','記録済みのため、在庫の入力をクリアしました'],
+  mstImpTtl:['匯入主檔（貼上JSON）','マスタを取り込む（JSONを貼り付け）'],
+  mstImpDesc:['貼上JSON或選擇 .json 檔案後按「匯入」。只會套用到這台裝置。確認後再按「把這台裝置的內容發布到所有裝置」','JSONを貼り付けるか .json ファイルを選んで「取り込む」を押します。入るのはこの端末だけです。確認してから「この端末の内容を全端末に配る」を押してください'],
+  mstImpBtn:['匯入','取り込む'],
+  mstImpFile:['選擇.json檔案','.jsonファイルを選ぶ'],
+  mstImpEmpty:['還沒有貼上內容','貼り付けがまだありません'],
+  mstImpBad:['無法讀取（JSON格式不對或沒有品項）','読み取れませんでした（JSONの形式が違うか、品目がありません）'],
+  mstImpBadSup:['有找不到廠商的品項：%s','仕入先が見つからない品目があります：%s'],
+  mstImpConfirm:['將用品項 %n件（變更 %c／新增 %a／刪除 %d）・廠商 %s家 取代這台裝置的主檔。確定嗎？','品目 %n件（変更 %c／追加 %a／削除 %d）・仕入先 %s社で、この端末のマスタを置き換えます。よろしいですか？'],
+  mstImpDone:['已匯入。確認內容後請按「發布到所有裝置」','取り込みました。内容を確認してから「全端末に配る」を押してください'],
+  mstStoreDefault:['尚未設定店名。要直接發布嗎？','店舗名が未設定です。このまま配りますか？'],
+  mstUpToDate:['已是最新','すでに最新です'],
+  mstNone:['還沒有發布過的主檔。請用上方按鈕進行第一次發布','まだ配られたマスタがありません。上のボタンで最初の配信をしてください'],
+  mstErr:['無法連線','通信できませんでした'],
+  lineStore:['店鋪','店舗'],
+  lineTotal:['合計','合計'],
+  outboxN:['有%n筆資料尚未傳送到試算表','シートに未送信のデータが%n件あります'],
+  outboxSend:['傳送未送出的資料','未送信分を送る'],
+  outboxOk:['已傳送未送出的資料','未送信分を送信しました'],
+  outboxFail:['目前還無法傳送。請稍後再試','まだ送信できません。あとで再度お試しください'],
+  outboxDrop:['捨棄未送出的資料','未送信分を破棄'],
+  confirmDrop:['將捨棄所有未送出的資料。確定嗎？','未送信のデータをすべて破棄します。よろしいですか？'],
+
+  /* 自動更新 */
+  updNew:['有新版本','新しい版があります'],
+  updBtn:['更新','更新'],
+  updClose:['關閉','閉じる'],
+  updCheck:['檢查更新','更新を確認'],
+  updChecking:['檢查中…','確認中…'],
+  updLatest:['已是最新','すでに最新です'],
+  updOffline:['無法確認。請檢查網路連線','確認できませんでした。通信状態をご確認ください'],
+  fVersion:['這台裝置的版本','この端末の版']
+};
+const two = k => `<span class="th">${L[k][0]}</span><span class="ja">${L[k][1]}</span>`;
+const one = k => pick(k);   /* 台灣版：表示言語に合わせる */
+const pick = k => state.lang === 'ja' ? L[k][1] : (state.lang === 'th' ? L[k][0] : L[k][0] + '／' + L[k][1]);
+
+/* ---------- サンプル ---------- */
+/* 台灣版：公開ファイルのためダミーのみ。実データは「マスタを取り込む」でJSONから入れる */
+const SAMPLE_SUPS = [
+  {id:'s01', name:"範例廠商", nameJa:"サンプル仕入先", url:"", phone:"", email:"", note:"", closed:[0], holidays:[], cutoff:""}
+];
+const SAMPLE_ITEMS = [
+  {id:'i001', cat:"範例廠商", name:"範例品項", nameJa:"サンプル品目", unit:'包', par:1, lot:1, lotUnit:'pack', price:0, supId:'s01'}
+];
+
+let state = {
+  store:'ONIMARU 內湖店', currency:'NT$', lang:'th', sheetUrl:'', lastSent:'',
+  suppliers: SAMPLE_SUPS.map(o => ({...o, closed:[...o.closed], holidays:[]})),
+  items: SAMPLE_ITEMS.map(o => ({...o})),
+  units: [...DEFAULT_UNITS],
+  counts:{}, prev:{}, groupBy:'sup', supFilter:null,
+  history:[], cycle:3, safety:20, outbox:[], pin:null, hol:[], lineOn:true,
+  masterRev:0, masterAt:'', masterBy:'', masterSig:'',
+  /* データの形の版。ver 2 から基準在庫と在庫をロット数で持つ */
+  ver: DATA_VER
+};
+let view = 'count';
+
+let saveTimer = null;
+function writeNow(){
+  saveTimer = null;
+  try{ window.storage.set(KEY, JSON.stringify(state)); }catch(e){}
+}
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(writeNow, 400);
+}
+/* 入力直後に画面を閉じても保存が確定するように、離脱時は待たずに書き込む */
+function flushSave(){ if(saveTimer){ clearTimeout(saveTimer); writeNow(); } }
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'hidden'){
+    flushSave();
+    unlocked = false;                       /* アプリを離れたら設定画面は再びロックする */
+  }else{
+    /* バックグラウンドから戻ってきたときも、前回「発注を記録する」で終わっていれば在庫入力をクリアする。
+       これまでは起動時（load）にしかこの判定をしておらず、アプリを完全に閉じ直さない限り在庫が残ったままだった */
+    if(clearCountsIfPending()){ flushSave(); go(view); toast(pick('recCleared')); }
+    if(view === 'master' && lockOn() && !unlocked) go('master');
+    checkForUpdate();
+    /* 在庫を数えている最中は画面が入れ替わらないよう、取り込みを見送る */
+    if(view !== 'count') pullMaster({});
+  }
+});
+window.addEventListener('pagehide', flushSave);
+/* 版1→版2の引っ越し。
+   版1では基準在庫・在庫・前回在庫・納品実数を実量（g など）で持っていたので、
+   入数で割ってロット数に直す（例：米 2,500 g ÷ 1袋1,000 g → 2.5 袋）。
+   使用履歴は実量のまま使うので触らない。 */
+const toLots = (v, n) => (v === null || v === undefined || v === '') ? v : round2(Number(v) / n);
+function migrateToLots(){
+  for(const it of state.items){
+    const n = lotSize(it);
+    if(n === 1) continue;
+    it.par = round2(Number(it.par || 0) / n);
+    const c = state.counts[it.id];
+    if(c !== undefined && c !== '' && c !== null) state.counts[it.id] = String(toLots(c, n));
+    const p = state.prev[it.id];
+    if(p){
+      p.stock = toLots(p.stock, n);
+      p.order = toLots(p.order, n);
+      p.received = toLots(p.received, n);
+    }
+  }
+}
+async function load(){
+  let oldVer = DATA_VER;
+  try{
+    const r = await window.storage.get(KEY);
+    if(r && r.value){
+      const d = JSON.parse(r.value);
+      if(d && Array.isArray(d.items)){ oldVer = Number(d.ver) || 1; state = Object.assign(state, d); }
+    }
+  }catch(e){}
+  if(!Array.isArray(state.suppliers)) state.suppliers = [];
+  state.suppliers.forEach(s => { if(!Array.isArray(s.closed)) s.closed = []; if(!Array.isArray(s.holidays)) s.holidays = []; });
+  if(!state.prev) state.prev = {};
+  if(!Array.isArray(state.units) || !state.units.length) state.units = [...DEFAULT_UNITS];
+  if(!Array.isArray(state.history)) state.history = [];
+  if(!Array.isArray(state.outbox)) state.outbox = [];
+  if(!(Number(state.cycle) > 0)) state.cycle = 3;
+  if(state.safety === undefined || state.safety === null || isNaN(Number(state.safety))) state.safety = 20;
+  if(!(state.pin && state.pin.h && state.pin.s)) state.pin = null;
+  if(!Array.isArray(state.hol)) state.hol = [];
+  if(oldVer < 2){ migrateToLots(); state.ver = DATA_VER; save(); }
+  state.ver = DATA_VER;
+  state.suppliers = state.suppliers.map(normSup);
+  state.items = (Array.isArray(state.items) ? state.items : []).map(normItem);
+  /* 前回「発注を記録する」で終わっていたら、在庫の入力は空から始める */
+  clearCountsIfPending();
+  /* 一度も配信・取込をしていない端末でも、この端末の変更を黙って消さないための基準値 */
+  if(!state.masterSig) state.masterSig = masterSig();
+}
+let clearedOnBoot = false;
+/* 「発注を記録する」のあと在庫入力をクリアする処理を1箇所にまとめる。
+   起動時（load）だけでなく、アプリをバックグラウンドから開き直したとき（visibilitychange）にも呼べるようにする */
+function clearCountsIfPending(){
+  if(!state.clearNext) return false;
+  state.counts = {};
+  state.clearNext = false;
+  state.recordedSig = '';
+  clearedOnBoot = true;
+  save();
+  return true;
+}
+
+/* ---------- 設定画面のロック（暗証番号） ----------
+   基準在庫・単価・仕入先情報を店舗スタッフが変更できないようにするための簡易ロック。
+   暗証番号そのものは保存せず、ソルトを付けて繰り返しハッシュした文字列だけを端末に保存する。
+   解除状態はメモリにしか持たないので、画面を離れる・アプリを閉じると再びロックがかかる。 */
+let unlocked = false;
+/* 試行回数と待ち時間は端末に持つ。再読込でリセットされると繰り返し試し放題になるため */
+const pinFailGet = () => Number(state.pinFail) || 0;
+const pinFailSet = n => { state.pinFail = n; save(); };
+const pinWaitGet = () => Number(state.pinWait) || 0;
+const pinWaitSet = t => { state.pinWait = t; save(); };
+const lockOn = () => !!(state.pin && state.pin.h);
+function pinHash(pin, salt){
+  const s = salt + '|' + String(pin) + '|' + salt;
+  let h1 = 0x811c9dc5, h2 = 0x9e3779b9;
+  for(let r = 0; r < 997; r++){
+    for(let i = 0; i < s.length; i++){
+      const c = s.charCodeAt(i);
+      h1 = Math.imul((h1 ^ c) >>> 0, 16777619) >>> 0;
+      h2 = Math.imul((h2 + c * (i + 1)) ^ h1, 2654435761) >>> 0;
+    }
+  }
+  return h1.toString(36) + '-' + h2.toString(36);
+}
+const makePin = pin => { const s = Math.random().toString(36).slice(2, 10); return { s, h: pinHash(pin, s) }; };
+const pinCheck = pin => lockOn() && pinHash(String(pin == null ? '' : pin), state.pin.s) === state.pin.h;
+function renderLock(){
+  bar.hidden = true;
+  app.innerHTML = `<div class="lockbox">
+    <p class="lockttl">${pick('lockTitle')}</p>
+    <p class="lockcap">${pick('lockHint')}</p>
+    <input type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" id="pinIn">
+    <button class="addbtn" id="pinGo">${one('lockOpen')}</button>
+    <button class="danger" id="pinCancel">${one('lockCancel')}</button>
+  </div>`;
+  const inp = document.getElementById('pinIn');
+  const submit = () => {
+    const left = Math.ceil((pinWaitGet() - Date.now()) / 1000);
+    if(left > 0){ toast(pick('lockWait').replace(/%n/g, left)); return; }
+    if(pinCheck(inp.value)){
+      unlocked = true; pinFailSet(0); pinWaitSet(0); inp.value = ''; renderMaster(); return;
+    }
+    inp.value = '';
+    const f = pinFailGet() + 1;
+    if(f >= 5){ pinFailSet(0); pinWaitSet(Date.now() + 30000); toast(pick('lockWait').replace(/%n/g, 30)); }
+    else { pinFailSet(f); toast(pick('lockWrong')); }
+    inp.focus();
+  };
+  document.getElementById('pinGo').onclick = submit;
+  document.getElementById('pinCancel').onclick = () => go('count');
+  inp.onkeydown = e => { if(e.key === 'Enter'){ e.preventDefault(); submit(); } };
+  setTimeout(() => { try{ inp.focus(); }catch(e){} }, 60);
+}
+
+/* ---------- 営業日判定 ---------- */
+const supOf = it => state.suppliers.find(s => s.id === it.supId) || null;
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const dayGap = (a, b) => Math.round((new Date(b+'T00:00:00') - new Date(a+'T00:00:00')) / 86400000);
+const wd = i => state.lang === 'ja' ? WD_JA[i] : (state.lang === 'th' ? WD_TH[i] : WD_TH[i]);
+function isClosed(sup, d){ return sup ? ((sup.closed||[]).includes(d.getDay()) || (sup.holidays||[]).includes(ymd(d))) : false; }
+function pastCutoff(sup, d){
+  if(!sup || !sup.cutoff) return false;
+  const now = new Date();
+  if(ymd(d) !== ymd(now)) return false;
+  const [h,m] = sup.cutoff.split(':').map(Number);
+  return now.getHours()*60 + now.getMinutes() >= h*60 + (m||0);
+}
+const canOrderToday = sup => { const t = new Date(); return !isClosed(sup,t) && !pastCutoff(sup,t); };
+function nextOrderDate(sup){
+  const d = new Date();
+  for(let i=0;i<60;i++){
+    const c = new Date(d.getFullYear(), d.getMonth(), d.getDate()+i);
+    if(!isClosed(sup,c) && !pastCutoff(sup,c)) return c;
+  }
+  return null;
+}
+function closedReason(sup){
+  const t = new Date();
+  if((sup.holidays||[]).includes(ymd(t))) return state.lang==='ja' ? '本日は臨時休業' : '今天臨時休息';
+  if((sup.closed||[]).includes(t.getDay())) return state.lang==='ja' ? `${WD_JA[t.getDay()]}曜は定休` : `星期${WD_TH[t.getDay()]}公休`;
+  if(pastCutoff(sup,t)) return state.lang==='ja' ? `本日${sup.cutoff}の締切を過ぎています` : `已超過今天${sup.cutoff}的截止時間`;
+  return '';
+}
+const restLabel = sup => {
+  const c = (sup.closed||[]).map(i => wd(i));
+  return c.length ? (state.lang==='ja' ? c.join('・')+'休' : '公休 '+c.join(',')) : '';
+};
+const dateLabel = d => d ? `${d.getMonth()+1}/${d.getDate()}(${wd(d.getDay())})` : '—';
+
+/* ---------- 計算 ---------- */
+const num = v => {
+  if(v === null || v === undefined) return null;
+  const t = String(v).replace(/[\s\u3000]/g, '');   /* 全角スペースも空欄として扱う */
+  if(t === '') return null;
+  const n = Number(t);
+  return isNaN(n) ? null : n;
+};
+const round2 = n => Math.round(n*100)/100;
+/* ---------- ロット（入数）まわり ----------
+   数える単位も、基準在庫も、発注も、すべてロット（袋・箱…）の個数でそろえる。
+     par   … 基準在庫。ロット数（例：米 2 ＝ 2袋）
+     counts… 棚を数えた在庫。ロット数（開けかけは 0.5 のように小数でよい）
+     lot   … 1ロットの量（入数）。単位は品目の unit（例：1袋＝1000g なら 1000）
+     price … 1ロットの価格（1単位あたりではない）
+   実量（g など）は「2袋＝2,000g」の表示と、シート・使用履歴に残すときだけ使う。 */
+const lotSize = it => { const v = Number(it.lot); return v > 0 ? v : 1; };
+/* ロット数 → 実量（g など） */
+const toUnits = (it, lots) => round2(Number(lots || 0) * lotSize(it));
+/* 発注ロット数。未カウントなら null、足りていれば 0 */
+function orderLots(item){
+  const c = num(state.counts[item.id]);
+  if(c === null) return null;
+  const short = round2(Number(item.par) - c);
+  if(short <= 0) return 0;
+  return Math.ceil(short - 1e-9);          /* 半端は1ロットに切り上げ */
+}
+/* 発注量を実量（g など）で。シートに残すときだけ使う */
+function orderQty(item){
+  const n = orderLots(item);
+  return n === null ? null : toUnits(item, n);
+}
+/* 概算金額＝ロット数 × 1ロットの価格 */
+const lotsAmount = (item, lots) => round2(Number(lots || 0) * Number(item.price || 0));
+const orderAmount = item => lotsAmount(item, orderLots(item) || 0);
+/* ロットの呼び名。未設定なら「ล็อต / ロット」 */
+function lotName(it){
+  const u = LOT_UNITS.find(x => x.k === (it && it.lotUnit));
+  const th = u ? u.th : L.lotGeneric[0];
+  const ja = u ? u.ja : L.lotGeneric[1];
+  return state.lang === 'ja' ? ja : (state.lang === 'th' ? th : th + '/' + ja);
+}
+/* シートに残す呼び名。表示言語によって列の中身が変わらないよう日本語で固定する */
+const lotNameJa = it => {
+  const u = LOT_UNITS.find(x => x.k === (it && it.lotUnit));
+  return u ? u.ja : L.lotGeneric[1];
+};
+/* 「2 ถุง/袋」と、その内訳「2,000 g」。1ロット＝1単位のときは内訳を出さない */
+function lotsText(it, lots){
+  const total = toUnits(it, lots);
+  /* 1ロット＝1単位（個・枚など）のときは実量を出さない（同じ数字になるため） */
+  return {head: fmt(lots) + ' ' + lotName(it),
+          sub: lotSize(it) === 1 ? '' : fmt(total) + ' ' + esc(it.unit)};
+}
+/* 1行で「2 袋（2,000 g）」。1ロット＝1単位なら「2 袋」だけ */
+function lotsLabel(it, lots){
+  const t = lotsText(it, lots);
+  return lotSize(it) === 1 ? t.head : `${t.head}（${t.sub}）`;
+}
+/* 品目マスタの基準在庫欄に添える「＝ 2,000 g」 */
+const parEqText = it => lotSize(it) === 1 ? '' : `＝ ${fmt(toUnits(it, it.par))} ${esc(it.unit)}`;
+const money = n => state.currency + Math.round(n).toLocaleString('en-US');
+const fmt = n => Number(n).toLocaleString('en-US', {maximumFractionDigits:2});
+const visibleItems = () => state.supFilter ? state.items.filter(i => i.supId === state.supFilter) : state.items;
+/* 入荷数：納品実数が入力されていればそれを使い、未入力なら発注数で代用する */
+const receivedOf = p => {
+  if(!p) return 0;
+  const r = num(p.received);
+  return r === null ? Number(p.order || 0) : r;
+};
+function usedQty(item){
+  const p = state.prev[item.id];
+  const c = num(state.counts[item.id]);
+  if(!p || c === null) return null;
+  const u = round2(Number(p.stock) + receivedOf(p) - c);
+  return u < 0 ? 0 : u;
+}
+function summary(){
+  let need=0, amount=0, blank=0;
+  for(const it of visibleItems()){
+    const lots = orderLots(it);
+    if(lots === null){ blank++; continue; }
+    if(lots > 0){ need++; amount += orderAmount(it); }
+  }
+  const list = visibleItems();
+  return {need, amount, blank, counted:list.length - blank, total:list.length};
+}
+const nm = o => `<span class="th">${esc(o.name)}</span><span class="ja">${esc(o.nameJa || '')}</span>`;
+
+/* ---------- フィルター ---------- */
+function filterBar(){
+  if(state.suppliers.length < 2) return '';
+  let h = `<div class="filter"><button data-sf="" aria-pressed="${!state.supFilter}"><span class="lbl">${pick('all')}</span></button>`;
+  for(const s of state.suppliers){
+    const r = restLabel(s);
+    const label = state.lang === 'ja' ? (s.nameJa || s.name) : s.name;
+    h += `<button data-sf="${s.id}" aria-pressed="${state.supFilter === s.id}" title="${esc(label)}"><span class="lbl">${esc(label)}</span>${r ? `<span class="rest">${esc(r)}</span>` : ''}</button>`;
+  }
+  return h + '</div>';
+}
+function bindFilter(){
+  app.querySelectorAll('[data-sf]').forEach(b => { b.onclick = () => { state.supFilter = b.dataset.sf || null; save(); go(view); }; });
+}
+
+/* ============ 在庫を数える ============ */
+function renderCount(){
+  const list = visibleItems();
+  let html = filterBar() + `<p class="hint">${pick('hintCount')}</p>`;
+  if(!list.length){
+    app.innerHTML = html + `<div class="empty">${pick('noItems')}</div>`;
+    bindFilter(); bar.hidden = true; return;
+  }
+  /* 入力の進み具合を最初に見せる。品目を1件ずつ追わなくても、全体の状況がひと目でわかるように */
+  const s0 = summary();
+  const pct = s0.total ? Math.round(s0.counted / s0.total * 100) : 0;
+  html += `<div class="progresswrap"><div class="prow"><b class="num">${s0.counted} / ${s0.total}${L.filled[state.lang==='ja'?1:0]}</b><span class="num">${pct}%</span></div>
+    <div class="ptrack"><div class="pfill" style="width:${pct}%"></div></div></div>`;
+  const keys = state.groupBy === 'sup'
+    ? [...new Set(list.map(i => i.supId || ''))]
+    : [...new Set(list.map(i => i.cat || '-'))];
+
+  for(const k of keys){
+    const rows = state.groupBy === 'sup' ? list.filter(i => (i.supId||'') === k) : list.filter(i => (i.cat||'-') === k);
+    let head;
+    if(state.groupBy === 'sup'){
+      const s = state.suppliers.find(x => x.id === k);
+      if(s){
+        const ok = canOrderToday(s);
+        head = `<div class="ghead"><h2>${nm(s)}</h2>
+          <span class="state ${ok?'open':'shut'}">${pick(ok?'canOrder':'cannotOrder')}</span>
+          <span class="next">${ok ? (s.cutoff ? L.cutoffAt[state.lang==='ja'?1:0]+esc(s.cutoff) : '') : L.nextIs[state.lang==='ja'?1:0]+dateLabel(nextOrderDate(s))}</span></div>`;
+      } else head = `<div class="ghead"><h2>${pick('noSupplier')}</h2></div>`;
+    } else head = `<div class="ghead"><h2>${esc(k)}</h2></div>`;
+
+    html += `<section class="group">${head}<div class="rows">`;
+    for(const it of rows){
+      const c = state.counts[it.id];
+      const lots = orderLots(it);
+      let flag = `<div class="flag blank">${pick('notFilled')}</div>`;
+      let rowCls = '';
+      if(lots !== null) {
+        if(lots > 0){ flag = `<div class="flag need">${L.orderN[state.lang==='ja'?1:0]}${lotsLabel(it, lots)}</div>`; rowCls = ' need'; }
+        else { flag = `<div class="flag ok">${pick('enough')}</div>`; rowCls = ' ok'; }
+      }
+      const s = supOf(it);
+      /* 見出しに出ている情報はメタ行から省く（区分＝仕入先名の運用だと重複して2行に折り返すため） */
+      const supLabel = s ? (state.lang === 'ja' ? (s.nameJa || s.name) : s.name) : '';
+      const head = state.groupBy === 'sup' ? supLabel : (it.cat || '');
+      const tail = state.groupBy === 'sup' ? (it.cat || '') : supLabel;
+      const same = tail && head && tail.trim() === head.trim();
+      const sub = `${L.parIs[state.lang==='ja'?1:0]}${lotsLabel(it, it.par)}${(tail && !same) ? '・' + esc(tail) : ''}`;
+      html += `<div class="row${rowCls}">
+        <div class="info"><div class="nm">${nm(it)}</div><div class="meta num">${sub}</div>${flag}</div>
+        <div class="stepwrap">
+          <div class="stepper">
+            <button type="button" data-step="-1" data-id="${it.id}" aria-label="-">−</button>
+            <input type="number" inputmode="decimal" step="any" min="0" placeholder="—" value="${c===undefined||c===''?'':c}" data-count="${it.id}" aria-label="${esc(it.name)}">
+            <button type="button" data-step="1" data-id="${it.id}" aria-label="+">＋</button>
+          </div>
+          <div class="ulab">${lotName(it)}</div>
+        </div></div>`;
+    }
+    html += '</div></section>';
+  }
+  app.innerHTML = html;
+  bindFilter();
+  const s = summary();
+  bar.hidden = false;
+  bar.innerHTML = `<div class="sum"><b class="num">${s.counted} / ${s.total}${L.filled[state.lang==='ja'?1:0]}</b>${s.need}${L.shortN[state.lang==='ja'?1:0]}${money(s.amount)}</div>
+    <button class="go" id="toResult" ${s.counted?'':'disabled'}>${two('toResult')}</button>`;
+  const b = document.getElementById('toResult');
+  if(b) b.onclick = () => go('result');
+}
+
+/* ============ 発注リスト ============ */
+function renderResult(){
+  const s = summary();
+  const rows = visibleItems().map(it => ({it, lots:orderLots(it)})).filter(r => r.lots > 0);
+  let html = filterBar();
+
+  if(!rows.length){
+    app.innerHTML = html + `<div class="empty">${pick(s.counted ? 'noOrder' : 'countFirst')}</div>` + sheetBox();
+    bindFilter(); bindSheet();
+    bar.hidden = false;
+    bar.innerHTML = `<div class="sum">—</div><button class="go" id="back">${two('backCount')}</button>`;
+    document.getElementById('back').onclick = () => go('count');
+    return;
+  }
+  if(s.blank) html += `<div class="warn">${pick('blankWarn').replace(/%n/g, s.blank)}</div>`;
+
+  const groups = [...new Set(rows.map(r => r.it.supId || ''))].map(id => {
+    const sup = state.suppliers.find(x => x.id === id) || null;
+    const list = rows.filter(r => (r.it.supId||'') === id);
+    return {sup, list, ok: sup ? canOrderToday(sup) : true, sum:list.reduce((a,r) => a + lotsAmount(r.it, r.lots), 0)};
+  });
+  groups.sort((a,b) => b.ok - a.ok);
+  let todaySum = 0, laterSum = 0, shownLater = false;
+  groups.forEach(g => { if(g.ok) todaySum += g.sum; else laterSum += g.sum; });
+  const anyToday = groups.some(g => g.ok);
+
+  groups.forEach((g, gi) => {
+    if(anyToday && gi === 0) html += `<p class="secttl">${pick('orderToday')}</p>`;
+    if(!g.ok && !shownLater){ shownLater = true; html += `<p class="secttl">${pick('orderLater')}</p>`; }
+    const url = g.sup ? (g.sup.url || '') : '';
+    html += `<article class="slip ${g.ok?'':'shut'}">
+      <div class="sup"><h3>${g.sup ? nm(g.sup) : pick('noSupplier')}</h3><span class="cnt num">${g.list.length}${L.items[state.lang==='ja'?1:0]}</span>
+      <span class="state ${g.ok?'open':'shut'}">${pick(g.ok?'canOrder':'cannotOrder')}</span>
+      ${g.ok ? '' : `<div class="closed">${esc(closedReason(g.sup))} → ${L.nextOrderDay[state.lang==='ja'?1:0]}${dateLabel(nextOrderDate(g.sup))}</div>`}</div>`;
+    for(const r of g.list){
+      const c = num(state.counts[r.it.id]);
+      const t = lotsText(r.it, r.lots);
+      html += `<div class="line">
+        <div class="n">${nm(r.it)}<div class="sub num">${L.stock[state.lang==='ja'?1:0]}${fmt(c)} / ${L.parIs[state.lang==='ja'?1:0]}${fmt(r.it.par)} ${lotName(r.it)}</div></div>
+        <div class="q num">${t.head}<span class="qsub">${t.sub}</span></div>
+        <div class="p num">${money(lotsAmount(r.it, r.lots))}</div></div>`;
+    }
+    html += `<div class="foot"><span class="lbl">${pick('subtotal')}</span><span class="amt">${money(g.sum)}</span></div>
+      <div class="acts">
+        ${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">${two('openSite')}</a>` : ''}
+        <button type="button" class="${url ? '' : 'solo'}" data-copy="${gi}">${two('copyOrder')}</button>
+      </div></article>`;
+  });
+
+  html += `<div class="total"><span class="lbl">${pick('todayTotal')}</span><span class="amt">${money(todaySum)}</span></div>`;
+  if(laterSum) html += `<p class="note">${pick('laterTotal')}：${money(laterSum)}（${money(todaySum+laterSum)}）</p>`;
+  html += `<p class="note">${pick('priceNote')}</p>` + sheetBox();
+
+  app.innerHTML = html;
+  bindFilter(); bindSheet();
+  app.querySelectorAll('[data-copy]').forEach(b => {
+    b.onclick = () => {
+      const g = groups[Number(b.dataset.copy)];
+      const name = g.sup ? `${g.sup.name}${g.sup.nameJa ? ' / '+g.sup.nameJa : ''}` : '-';
+      copy([
+        `【叫貨】${name}`,
+        `${state.store}  ${dateStr()}`,
+        ...g.list.map(r => `・${r.it.name}${r.it.nameJa ? ' ('+r.it.nameJa+')' : ''}  ${fmt(r.lots)} ${lotName(r.it)}（${fmt(round2(r.lots*lotSize(r.it)))} ${r.it.unit}）`),
+        `${L.subtotal[0]} ${money(g.sum)}`,
+        g.ok ? '' : `※${closedReason(g.sup)} → ${dateLabel(nextOrderDate(g.sup))}`
+      ].filter(Boolean).join('\n'));
+    };
+  });
+  bar.hidden = false;
+  bar.innerHTML = `<div class="sum"><b class="num">${rows.length}${L.items[state.lang==='ja'?1:0]}・${money(todaySum+laterSum)}</b>${groups.length} ${L.supplier[state.lang==='ja'?1:0]}</div>
+    <button class="go" id="back">${two('backCount')}</button>`;
+  document.getElementById('back').onclick = () => go('count');
+}
+
+/* ============ 納品（実数入力） ============ */
+const pendingItems = () => visibleItems().filter(it => {
+  const p = state.prev[it.id];
+  return p && Number(p.order || 0) > 0;
+});
+function recvFlag(it, v){
+  const p = state.prev[it.id] || {};
+  const r = num(v);
+  if(r === null) return `<div class="flag none">${pick('recvPending')}</div>`;
+  const diff = round2(r - Number(p.order || 0));
+  if(diff === 0) return `<div class="flag exact">${pick('recvExact')}</div>`;
+  if(diff < 0) return `<div class="flag short">${L.recvShort[state.lang==='ja'?1:0]}${fmt(-diff)} ${lotName(it)}</div>`;
+  return `<div class="flag over">${L.recvOver[state.lang==='ja'?1:0]}${fmt(diff)} ${lotName(it)}</div>`;
+}
+function renderRecv(){
+  const list = pendingItems();
+  let html = filterBar() + `<p class="hint">${pick('recvHint')}</p>`;
+  if(!list.length){
+    app.innerHTML = html + `<div class="empty">${pick('recvNone')}<span class="emptysub">${pick('recvNoneHint')}</span></div>`;
+    bindFilter(); bar.hidden = true; return;
+  }
+  html += `<div class="rbtns">
+    <button type="button" id="recvAll">${pick('recvAllOk')}</button>
+    <button type="button" class="alt" id="recvClr">${pick('recvClear')}</button></div>`;
+  for(const k of [...new Set(list.map(i => i.supId || ''))]){
+    const rows = list.filter(i => (i.supId || '') === k);
+    const sup = state.suppliers.find(x => x.id === k);
+    html += `<section class="group"><div class="ghead"><h2>${sup ? nm(sup) : pick('noSupplier')}</h2>
+      <span class="next">${rows.length}${L.items[state.lang==='ja'?1:0]}</span></div><div class="rows">`;
+    for(const it of rows){
+      const pr = state.prev[it.id];
+      const v = (pr.received === null || pr.received === undefined || pr.received === '') ? '' : pr.received;
+      html += `<div class="row">
+        <div class="info"><div class="nm">${nm(it)}</div>
+          <div class="meta num">${L.recvOrdered[state.lang==='ja'?1:0]}${lotsLabel(it, pr.order)}・${L.recvOn[state.lang==='ja'?1:0]}${esc(pr.date || '')}</div>
+          ${recvFlag(it, v)}</div>
+        <div class="stepwrap">
+          <div class="stepper">
+            <button type="button" data-rstep="-1" data-rid="${it.id}" aria-label="-">−</button>
+            <input type="number" inputmode="decimal" step="any" min="0" placeholder="—" value="${v}" data-recv="${it.id}" aria-label="${esc(it.name)}">
+            <button type="button" data-rstep="1" data-rid="${it.id}" aria-label="+">＋</button>
+          </div>
+          <div class="ulab">${lotName(it)}</div>
+        </div></div>`;
+    }
+    html += '</div></section>';
+  }
+  app.innerHTML = html;
+  bindFilter();
+  document.getElementById('recvAll').onclick = () => {
+    pendingItems().forEach(it => { state.prev[it.id].received = Number(state.prev[it.id].order || 0); });
+    save(); renderRecv();
+  };
+  document.getElementById('recvClr').onclick = () => {
+    pendingItems().forEach(it => { state.prev[it.id].received = null; });
+    save(); renderRecv();
+  };
+  updateRecvBar();
+}
+function updateRecvRow(input){
+  const it = state.items.find(x => x.id === input.dataset.recv);
+  if(!it) return;
+  const flag = input.closest('.row').querySelector('.flag');
+  const tmp = document.createElement('div');
+  tmp.innerHTML = recvFlag(it, input.value);
+  flag.className = tmp.firstElementChild.className;
+  flag.textContent = tmp.firstElementChild.textContent;
+  updateRecvBar();
+}
+function updateRecvBar(){
+  const list = pendingItems();
+  const done = list.filter(it => num((state.prev[it.id] || {}).received) !== null).length;
+  bar.hidden = false;
+  bar.innerHTML = `<div class="sum"><b class="num">${done} / ${list.length}${L.filled[state.lang==='ja'?1:0]}</b>${list.length - done}${L.recvCount[state.lang==='ja'?1:0]}</div>
+    <button class="go" id="recvBack">${two('backCount')}</button>`;
+  const b = document.getElementById('recvBack');
+  if(b) b.onclick = () => go('count');
+}
+
+/* ---------- タイの祝日（表示のみ） ----------
+   祝日は「この日は祝日です」と知らせるだけで、発注は止めない。
+   仕入先が実際に休む日は、これまでどおり仕入先ごとの臨時休業日に登録する。
+   出典：タイ銀行が公表した金融機関の休日および各年の政府公表分。
+   2028年以降は設定画面から手動で追加する。 */
+/* 台灣版：行政院人事行政總處の辦公日曆表（115年・116年）による。2026年以降は補班日なし */
+const TH_HOLIDAYS = {
+  2026: [
+    ['2026-01-01','開國紀念日','元日'],
+    ['2026-02-15','除夕前一日','旧暦大晦日の前日'],
+    ['2026-02-16','除夕','旧暦大晦日'],
+    ['2026-02-17','春節','春節'],
+    ['2026-02-18','春節','春節'],
+    ['2026-02-19','春節','春節'],
+    ['2026-02-20','春節補假','春節の振替'],
+    ['2026-02-27','和平紀念日補假','和平記念日の振替'],
+    ['2026-02-28','和平紀念日','和平記念日'],
+    ['2026-04-03','兒童節補假','児童節の振替'],
+    ['2026-04-04','兒童節','児童節'],
+    ['2026-04-05','清明節','清明節'],
+    ['2026-04-06','清明節補假','清明節の振替'],
+    ['2026-05-01','勞動節','労働節'],
+    ['2026-06-19','端午節','端午節'],
+    ['2026-09-25','中秋節','中秋節'],
+    ['2026-09-28','教師節','教師節（孔子誕生日）'],
+    ['2026-10-09','國慶日補假','国慶日の振替'],
+    ['2026-10-10','國慶日','国慶日'],
+    ['2026-10-25','臺灣光復紀念日','台湾光復記念日'],
+    ['2026-10-26','臺灣光復紀念日補假','台湾光復記念日の振替'],
+    ['2026-12-25','行憲紀念日','憲法記念日']
+  ],
+  2027: [
+    ['2027-01-01','開國紀念日','元日'],
+    ['2027-02-04','除夕前一日','旧暦大晦日の前日'],
+    ['2027-02-05','除夕','旧暦大晦日'],
+    ['2027-02-06','春節','春節'],
+    ['2027-02-07','春節','春節'],
+    ['2027-02-08','春節','春節'],
+    ['2027-02-09','春節補假','春節の振替'],
+    ['2027-02-10','春節補假','春節の振替'],
+    ['2027-02-28','和平紀念日','和平記念日'],
+    ['2027-03-01','和平紀念日補假','和平記念日の振替'],
+    ['2027-04-04','兒童節','児童節'],
+    ['2027-04-05','清明節','清明節'],
+    ['2027-04-06','兒童節補假','児童節の振替'],
+    ['2027-04-30','勞動節補假','労働節の振替'],
+    ['2027-05-01','勞動節','労働節'],
+    ['2027-06-09','端午節','端午節'],
+    ['2027-09-15','中秋節','中秋節'],
+    ['2027-09-28','教師節','教師節（孔子誕生日）'],
+    ['2027-10-10','國慶日','国慶日'],
+    ['2027-10-11','國慶日補假','国慶日の振替'],
+    ['2027-10-25','臺灣光復紀念日','台湾光復記念日'],
+    ['2027-12-24','行憲紀念日補假','憲法記念日の振替'],
+    ['2027-12-25','行憲紀念日','憲法記念日'],
+    ['2027-12-31','開國紀念日補假（2028年元日分）','元日の振替（2028年分）']
+  ]
+};
+const holName = h => state.lang === 'ja' ? (h.ja || h.th)
+  : (state.lang === 'th' ? h.th : `${h.th}／${h.ja || h.th}`);
+function addHolidayYear(y){
+  const src = TH_HOLIDAYS[y] || [];
+  if(!Array.isArray(state.hol)) state.hol = [];
+  const have = new Set(state.hol.map(h => h.d + '|' + h.th));
+  let n = 0;
+  for(const [d, th, ja] of src){
+    if(have.has(d + '|' + th)) continue;
+    state.hol.push({d, th, ja}); n++;
+  }
+  state.hol.sort((a, b) => a.d < b.d ? -1 : 1);
+  return n;
+}
+/* 「タイ語の文／日本語の文」の形にそろえる。pick() をそのまま使うと
+   「タイ語見出し／日本語見出し：タイ語の名前／日本語の名前」と入れ子になって読みにくいため。 */
+function holLine(key, names, dateYmd){
+  const stamp = i => {
+    if(!dateYmd) return '';
+    const d = new Date(dateYmd + 'T00:00:00');
+    const w = i === 1 ? WD_JA[d.getDay()] : WD_TH[d.getDay()];
+    return `${d.getMonth() + 1}/${d.getDate()}(${w}) `;
+  };
+  const line = i => L[key][i] + stamp(i) + names.map(h => (i === 1 ? (h.ja || h.th) : h.th)).join(' / ');
+  if(state.lang === 'ja') return line(1);
+  if(state.lang === 'th') return line(0);
+  return line(0) + '　／　' + line(1);
+}
+function renderHolBar(){
+  const el = document.getElementById('holbar');
+  if(!el) return;
+  const list = Array.isArray(state.hol) ? state.hol : [];
+  const t = new Date();
+  const today = ymd(t);
+  const todays = list.filter(h => h.d === today);
+  if(todays.length){
+    el.hidden = false;
+    el.textContent = holLine('holToday', todays, '');
+    return;
+  }
+  const lim = ymd(new Date(t.getFullYear(), t.getMonth(), t.getDate() + 7));
+  const soon = list.filter(h => h.d > today && h.d <= lim).sort((a, b) => a.d < b.d ? -1 : 1)[0];
+  if(soon){
+    el.hidden = false;
+    el.textContent = holLine('holSoon', [soon], soon.d);
+    return;
+  }
+  el.hidden = true;
+}
+
+/* ---------- シートから使用履歴を読み戻す ----------
+   自動提案のもとになる使用履歴は端末のブラウザにしか無いため、機種変更や初期化で失われる。
+   シートには毎回の記録が残っているので、そこから履歴を組み立て直して端末に戻す。
+   Apps Script への GET は素の fetch だと CORS で読めないことがあるため、JSONP（script タグ）で読む。 */
+function jsonp(url, params, ms){
+  return new Promise((resolve, reject) => {
+    const cb = 'cb_' + Math.random().toString(36).slice(2, 10);
+    const sc = document.createElement('script');
+    let done = false;
+    const cleanup = () => { try{ delete window[cb]; }catch(e){ window[cb] = undefined; } sc.remove(); };
+    const timer = setTimeout(() => { if(!done){ done = true; cleanup(); reject(new Error('timeout')); } }, ms || 25000);
+    window[cb] = data => { done = true; clearTimeout(timer); cleanup(); resolve(data); };
+    sc.onerror = () => { if(!done){ done = true; clearTimeout(timer); cleanup(); reject(new Error('network')); } };
+    const q = new URLSearchParams(Object.assign({}, params, {callback: cb})).toString();
+    sc.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + q;
+    document.head.appendChild(sc);
+  });
+}
+async function restoreHistory(btn){
+  if(!state.sheetUrl){ toast(pick('restNoUrl')); return; }
+  if(!confirm(pick('restConfirm'))) return;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = pick('restLoading');
+  try{
+    const r = await jsonp(state.sheetUrl, {mode:'history', store: state.store || '', days: 28});
+    if(!r || !r.ok) throw new Error((r && r.error) || 'ng');
+    const rows = Array.isArray(r.rows) ? r.rows : [];
+    const prevs = Array.isArray(r.prev) ? r.prev : [];
+    if(!rows.length && !prevs.length){ toast(pick('restEmpty')); return; }
+    const ids = new Set(state.items.map(i => i.id));
+    state.history = rows.filter(h => ids.has(h.id))
+      .map(h => ({id:h.id, d:h.d, used:Number(h.used) || 0, days:Number(h.days) || 0}));
+    const lim = new Date(); lim.setDate(lim.getDate() - 14);
+    const recent = ymd(lim);
+    prevs.forEach(p => {
+      const it = state.items.find(x => x.id === p.id);
+      if(!it) return;
+      /* 何ヶ月も前の発注が納品待ちに溜まらないよう、直近14日の記録だけ戻す */
+      if(!p.date || p.date < recent) return;
+      /* シートは実量（g など）で入っているので、入数で割ってロット数に戻す */
+      const n = lotSize(it);
+      const cur = state.prev[p.id];
+      state.prev[p.id] = {stock: round2((Number(p.stock) || 0) / n), order: round2((Number(p.order) || 0) / n),
+                          date: p.date,
+                          received: (cur && cur.date === p.date) ? cur.received : null};
+    });
+    save(); flushSave();
+    toast(pick('restOk').replace(/%n/g, state.history.length));
+    renderMaster();
+  }catch(e){
+    toast(pick('restErr'));
+  }finally{
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+
+/* ============ マスタの共有（端末間の同期） ============
+   品目・仕入先・単位・祝日をシートに1本だけ置き、全端末が同じものを使う。
+   品目マスタの中身（区分・単位・基準在庫・1ロットの量・ロットの呼び名・1ロットの価格・仕入先）も
+   まとめて同じものになる。
+   ・取り込みは自動（起動時と、他のアプリから戻ったとき）
+   ・配るのは手動（設定画面の「全端末に配る」）
+   店舗名・Apps ScriptのURL・暗証番号・在庫の入力内容・使用履歴は端末ごとのまま。 */
+const masterData = () => ({ver:DATA_VER, items:state.items, suppliers:state.suppliers, units:state.units, hol:state.hol});
+/* 他の端末から来たデータは欠けている項目があるので、使う前に形を整える */
+function normSup(s){
+  const o = {...s};
+  if(!Array.isArray(o.closed)) o.closed = [];
+  if(!Array.isArray(o.holidays)) o.holidays = [];
+  return o;
+}
+function normItem(it){
+  const o = {...it};
+  o.par = Math.max(0, Number(o.par) || 0);
+  o.lot = Number(o.lot) > 0 ? Number(o.lot) : 1;
+  o.price = Math.max(0, Number(o.price) || 0);
+  if(!o.unit) o.unit = (state.units || ['g'])[0];
+  return o;
+}
+/* 変更されたかどうかは、丸ごと持たずに短い符号で比べる（端末の保存領域を使わないため） */
+function masterSig(){
+  const t = JSON.stringify(masterData());
+  let h = 5381;
+  for(let i=0;i<t.length;i++) h = ((h*33) ^ t.charCodeAt(i)) >>> 0;
+  return `${t.length}-${h.toString(36)}`;
+}
+const masterDirty = () => !!state.masterSig && masterSig() !== state.masterSig;
+function applyMaster(d){
+  if(!d) return false;
+  /* 古い版（基準在庫を実量で持っていた版）が配ったマスタは受け取らない。
+     ロット数と実量を見分けられず、黙って基準在庫を壊すおそれがあるため。 */
+  if(Array.isArray(d.items) && d.items.length && !(Number(d.ver) >= 2)){
+    toast(pick('mstOldVer'));
+    return false;
+  }
+  if(Array.isArray(d.items) && d.items.length) state.items = d.items.map(normItem);
+  if(Array.isArray(d.suppliers)) state.suppliers = d.suppliers.map(normSup);
+  if(Array.isArray(d.units) && d.units.length) state.units = d.units;
+  if(Array.isArray(d.hol)) state.hol = d.hol;
+  /* 配られたマスタから消えた品目は、在庫入力と前回在庫も残さない */
+  const ids = new Set(state.items.map(i => i.id));
+  for(const k of Object.keys(state.counts)) if(!ids.has(k)) delete state.counts[k];
+  for(const k of Object.keys(state.prev)) if(!ids.has(k)) delete state.prev[k];
+  if(state.supFilter && !state.suppliers.some(x => x.id === state.supFilter)) state.supFilter = null;
+  return true;
+}
+/* 貼り付けたJSONでこの端末のマスタを置き換える（配るのは別操作）。
+   ?mode=master の応答（{ok,rev,data:{...}}）も、data部分だけ（{ver,items,...}）も受け付ける。 */
+function importMaster(text){
+  const t = String(text || '').replace(/^\uFEFF/, '').trim();
+  if(!t){ toast(pick('mstImpEmpty')); return false; }
+  let d;
+  try{ d = JSON.parse(t); }catch(e){ toast(pick('mstImpBad')); return false; }
+  if(d && typeof d.json === 'string'){ try{ d = JSON.parse(d.json); }catch(e){ d = null; } }
+  if(d && d.data && typeof d.data === 'object') d = d.data;
+  if(!d || !Array.isArray(d.items) || !d.items.length || !d.items.every(i => i && i.id && (i.name || i.nameJa))){
+    toast(pick('mstImpBad')); return false;
+  }
+  if(!(Number(d.ver) >= 2)) d.ver = DATA_VER;
+  const sups = Array.isArray(d.suppliers) && d.suppliers.length ? d.suppliers : state.suppliers;
+  const sids = new Set(sups.map(x => x.id));
+  const lost = d.items.filter(i => !sids.has(i.supId)).map(i => i.nameJa || i.name);
+  if(lost.length){ toast(pick('mstImpBadSup').replace(/%s/g, lost.slice(0,3).join('、') + (lost.length > 3 ? '…' : ''))); return false; }
+  const cur = new Map(state.items.map(i => [i.id, i]));
+  const keys = ['name','nameJa','cat','unit','par','lot','lotUnit','price','supId'];
+  let c = 0, a = 0;
+  for(const it of d.items){
+    const o = cur.get(it.id);
+    if(!o){ a++; continue; }
+    if(keys.some(k => String(o[k] ?? '') !== String(it[k] ?? ''))) c++;
+  }
+  const newIds = new Set(d.items.map(i => i.id));
+  const del = state.items.filter(i => !newIds.has(i.id)).length;
+  const msg = pick('mstImpConfirm').replace(/%n/g, d.items.length).replace(/%c/g, c).replace(/%a/g, a).replace(/%d/g, del).replace(/%s/g, sups.length);
+  if(!confirm(msg)) return false;
+  if(!applyMaster({ver:d.ver, items:d.items, suppliers:sups, units:d.units, hol:d.hol})) return false;
+  /* 単位リストに無い単位が品目にあれば足しておく（選択肢から消えないように） */
+  for(const it of state.items) if(it.unit && !state.units.includes(it.unit)) state.units.push(it.unit);
+  save(); flushSave();
+  toast(pick('mstImpDone'));
+  go(view);
+  return true;
+}
+let mstBusy = false;
+/* opts.manual … 設定画面のボタンから呼ばれた（メッセージを必ず出す） */
+async function pullMaster(opts){
+  const o = opts || {};
+  if(mstBusy) return false;
+  if(!state.sheetUrl){ if(o.manual) toast(pick('sheetNoUrl')); return false; }
+  mstBusy = true;
+  try{
+    const meta = await jsonp(state.sheetUrl, {mode:'masterrev'}, 20000);
+    if(!meta || !meta.ok) throw new Error('ng');
+    const rev = Number(meta.rev) || 0;
+    if(!rev){ if(o.manual) toast(pick('mstNone')); return false; }
+    if(rev === Number(state.masterRev || 0)){ if(o.manual) toast(pick('mstUpToDate')); return false; }
+    /* 数えている途中に画面を作り直すと入力が飛ぶので、入力があるときは見送る */
+    if(!o.manual && view === 'count' && Object.keys(state.counts).some(k => state.counts[k] !== '')){
+      toast(pick('mstHold'));
+      return false;
+    }
+    /* 自動のときは、この端末の未配信の変更を黙って消さない */
+    if(!o.manual && masterDirty() && !confirm(pick('mstOverwrite'))) return false;
+    const full = await jsonp(state.sheetUrl, {mode:'master'}, 25000);
+    if(!full || !full.ok || !full.data) throw new Error('ng');
+    applyMaster(full.data);
+    state.masterRev = Number(full.rev) || rev;
+    state.masterAt = full.updatedAt || '';
+    state.masterBy = full.by || '';
+    state.masterSig = masterSig();
+    save(); flushSave();
+    toast(pick('mstPulled').replace(/%n/g, state.masterRev));
+    go(view);
+    return true;
+  }catch(e){
+    if(o.manual) toast(pick('mstErr'));
+    return false;
+  }finally{
+    mstBusy = false;
+  }
+}
+/* 配る。POSTは応答を読めないので、送ったあとに版が上がったかを見に行って確かめる。 */
+async function pushMaster(btn){
+  if(!state.sheetUrl){ toast(pick('sheetNoUrl')); return; }
+  let meta = null;
+  try{ meta = await jsonp(state.sheetUrl, {mode:'masterrev'}, 20000); }catch(e){}
+  const srvRev = (meta && meta.ok) ? (Number(meta.rev) || 0) : 0;
+  if(srvRev && srvRev !== Number(state.masterRev || 0)){
+    const who = `${(meta && meta.updatedAt) || ''} ${(meta && meta.by) || ''}`.trim();
+    if(!confirm(pick('mstNewer').replace('%s', who))) return;
+  }
+  if(!(state.store || '').trim() || false){ if(!confirm(pick('mstStoreDefault'))) return; }
+  if(!confirm(pick('mstPushConfirm'))) return;
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = pick('mstSending');
+  try{
+    await postRows(JSON.stringify({type:'master', by: state.store || '', data: masterData()}));
+    let done = false;
+    for(let i=0;i<8;i++){
+      await new Promise(r => setTimeout(r, 1500));
+      try{
+        const m = await jsonp(state.sheetUrl, {mode:'masterrev'}, 15000);
+        if(m && m.ok && (Number(m.rev) || 0) > srvRev){
+          state.masterRev = Number(m.rev);
+          state.masterAt = m.updatedAt || '';
+          state.masterBy = m.by || '';
+          state.masterSig = masterSig();
+          save(); flushSave();
+          done = true; break;
+        }
+      }catch(e){}
+    }
+    toast(pick(done ? 'mstPushed' : 'mstPushNg'));
+  }finally{
+    btn.disabled = false; btn.textContent = label;
+    renderMaster();
+  }
+}
+
+/* ============ 基準在庫・発注ロットの自動提案 ============ */
+const leadOf = it => { const sp = supOf(it); const v = sp ? Number(sp.lead) : NaN; return v > 0 ? v : 1; };
+function usageStats(itemId, windowDays){
+  const lim = new Date(); lim.setDate(lim.getDate() - (windowDays || 28));
+  const from = ymd(lim);
+  const rows = state.history.filter(h => h.id === itemId && h.d >= from);
+  if(!rows.length) return null;
+  const used = rows.reduce((a, h) => a + Number(h.used || 0), 0);
+  const days = rows.reduce((a, h) => a + Number(h.days || 0), 0);
+  if(!(days > 0)) return null;
+  return {perDay: used / days, n: rows.length};
+}
+/* ロット数は現場が数えやすい刻みに切り上げる（5未満は0.5刻み、それ以上は1刻み） */
+const niceLots = n => {
+  if(!(n > 0)) return 0;
+  return n < 5 ? Math.ceil(n * 2 - 1e-9) / 2 : Math.ceil(n - 1e-9);
+};
+function suggestFor(it){
+  const st = usageStats(it.id, 28);
+  if(!st || !(st.perDay > 0)) return null;
+  const cycle = Number(state.cycle) > 0 ? Number(state.cycle) : 3;
+  const safety = 1 + (Number(state.safety) || 0) / 100;
+  /* 1ロットの量は仕入先の売り方で決まるので提案しない。基準在庫だけを出す。
+     使用履歴は実量（g など）なので、入数で割ってロット数にしてから提案する。 */
+  const need = st.perDay * (leadOf(it) + cycle) * safety;
+  return {perDay: st.perDay, n: st.n, par: niceLots(need / lotSize(it))};
+}
+function renderSuggest(){
+  const box = document.getElementById('sugBox');
+  if(!box) return;
+  const rows = state.items.map(it => ({it, sg: suggestFor(it)})).filter(r => r.sg && r.sg.par > 0);
+  if(!rows.length){ box.innerHTML = `<div class="warn">${pick('sugNoHist')}</div>`; return; }
+  let h = '<div class="sug">';
+  for(const r of rows){
+    const changed = Number(r.it.par) !== r.sg.par;
+    h += `<label class="sugrow">
+      <input type="checkbox" data-sug="${r.it.id}" ${changed ? 'checked' : ''}>
+      <span class="n">${nm(r.it)}<span class="d num">${fmt(round2(r.sg.perDay))} ${esc(r.it.unit)}${L.sugPerDay[state.lang==='ja'?1:0]}・${r.sg.n}${L.sugTimes[state.lang==='ja'?1:0]}</span></span>
+      <span class="v">${L.sugPar[state.lang==='ja'?1:0]}<span class="old">${fmt(r.it.par)}</span><b>${lotsLabel(r.it, r.sg.par)}</b></span>
+    </label>`;
+  }
+  box.innerHTML = h + `</div><button class="addbtn" id="sugApply">${one('sugApply')}</button>`;
+  document.getElementById('sugApply').onclick = () => {
+    let n = 0;
+    box.querySelectorAll('[data-sug]:checked').forEach(cb => {
+      const it = state.items.find(x => x.id === cb.dataset.sug);
+      const sg = it ? suggestFor(it) : null;
+      if(!sg || !(sg.par > 0)) return;
+      it.par = sg.par;
+      n++;
+    });
+    save(); renderMaster(); toast(pick('sugApplied').replace(/%n/g, n));
+  };
+}
+
+/* ---------- シート送信 ---------- */
+function sheetBox(){
+  const hasSheet = !!state.sheetUrl;
+  const ob = (state.outbox || []).length;
+  return `<div class="sheetbox">
+    <h4>${two('recTitle')}</h4>
+    <p>${pick(hasSheet ? 'recDescSheet' : 'recDescLocal')}${state.lastSent ? `<br>${L.lastSent[state.lang==='ja'?1:0]}${esc(state.lastSent)}` : ''}</p>
+    ${hasSheet ? '' : `<p class="cap2">${pick('recHintSheet')}</p>`}
+    ${state.supFilter ? `<div class="warn">${pick('recAllSup')}</div>` : ''}
+    ${ob ? `<div class="warn">${pick('outboxN').replace(/%n/g, ob)}</div>
+      <div class="brow"><button type="button" class="alt" id="obSend">${pick('outboxSend')}</button>
+      <button type="button" class="alt" id="obDrop">${pick('outboxDrop')}</button></div>` : ''}
+    <div class="brow">
+      <button type="button" id="sheetSend" ${alreadyRecorded() ? 'disabled' : ''}>${pick(alreadyRecorded() ? 'recDone' : 'recTitle')}</button>
+      <button type="button" class="alt" id="sheetCsv">${pick('sheetCsv')}</button>
+    </div></div>`;
+}
+function buildRows(){
+  const d = new Date();
+  return state.items.filter(it => num(state.counts[it.id]) !== null).map(it => {
+    const s = supOf(it);
+    const lots = orderLots(it) || 0;
+    const q = toUnits(it, lots);
+    const u = usedQty(it);
+    const p = state.prev[it.id];
+    /* シートの「単価」列は1単位あたりに直して入れる（発注数×単価＝金額 が成り立つように）。
+       ロット数・入数・ロット単価は末尾の列に別で残す。 */
+    const unitPrice = round2(Number(it.price || 0) / lotSize(it));
+    /* アプリはロット数で持っているが、シートには従来どおり実量（g など）で残す。
+       入数を変えても過去の使用量と比べられるようにするため。 */
+    return {
+      date: ymd(d), time: `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`,
+      store: state.store,
+      supplierId: s ? s.id : '', supplier: s ? s.name : '', supplierJa: s ? (s.nameJa||'') : '',
+      itemId: it.id, item: it.name, itemJa: it.nameJa || '', unit: it.unit, category: it.cat || '',
+      prevStock: p ? toUnits(it, p.stock) : '', received: p ? toUnits(it, receivedOf(p)) : '',
+      stock: toUnits(it, num(state.counts[it.id])), used: u === null ? '' : toUnits(it, u),
+      par: toUnits(it, it.par), order: q, price: unitPrice, amount: lotsAmount(it, lots), currency: state.currency,
+      lots, lotSize: lotSize(it), lotPrice: Number(it.price || 0), lotUnit: lotNameJa(it)
+    };
+  });
+}
+/* ---------- LINEに送る本文 ----------
+   発注リスト画面と同じ組み方で、仕入先ごとの品目・数量・金額・小計、最後に合計を並べる。
+   画面の絞り込み（チップ）に関わらず、全品目を対象にする。
+   表示言語の設定に関わらず、タイ語と日本語を併記する。 */
+/* 台灣版：LINEは繁體中文のみ（LINE_BI を true にすると日本語併記に戻る） */
+const LINE_BI = false;
+const lineNm = o => (LINE_BI && o && o.nameJa) ? `${o.name} / ${o.nameJa}` : ((o && (o.name || o.nameJa)) || '-');
+const lj = k => LINE_BI ? `${L[k][0]} / ${L[k][1]}` : L[k][0];
+/* 発注できない理由はタイ語・日本語の両方を出したいので、一時的に言語を切り替えて2回読む */
+function bothReason(sup){
+  const cur = state.lang;
+  try{
+    state.lang = 'th'; const th = closedReason(sup);
+    state.lang = 'ja'; const ja = closedReason(sup);
+    return LINE_BI ? ((th && ja) ? `${th} / ${ja}` : (th || ja)) : (th || ja);
+  }finally{
+    state.lang = cur;                       /* 途中で失敗しても表示言語を戻す */
+  }
+}
+function buildLineText(){
+  const rows = state.items.map(it => ({it, lots:orderLots(it)})).filter(r => r.lots > 0);
+  if(!rows.length) return '';
+  const groups = [...new Set(rows.map(r => r.it.supId || ''))].map(id => {
+    const sup = state.suppliers.find(x => x.id === id) || null;
+    const list = rows.filter(r => (r.it.supId||'') === id);
+    return {sup, list, ok: sup ? canOrderToday(sup) : true,
+            sum:list.reduce((a,r) => a + lotsAmount(r.it, r.lots), 0)};
+  });
+  groups.sort((a,b) => b.ok - a.ok);
+
+  const out = [
+    `${lj('lineTitle')}`,
+    `${lj('lineStore')}：${state.store || '-'}`,
+    dateStr()
+  ];
+  const anyToday = groups.some(g => g.ok);
+  let today = 0, later = 0, shownLater = false;
+  groups.forEach((g, gi) => {
+    if(g.ok) today += g.sum; else later += g.sum;
+    if(anyToday && gi === 0) out.push('', `― ${lj('orderToday')} ―`);
+    if(!g.ok && !shownLater){ shownLater = true; out.push('', `― ${lj('orderLater')} ―`); }
+    out.push('', `■ ${g.sup ? lineNm(g.sup) : `${lj('noSupplier')}`}`);
+    if(!g.ok) out.push(`　（${bothReason(g.sup)} → ${LINE_BI ? L.nextOrderDay[0].trim() + ' / ' + L.nextOrderDay[1].trim() : L.nextOrderDay[0].trim()} ${dateLabel(nextOrderDate(g.sup))}）`);
+    for(const r of g.list){
+      const total = round2(r.lots * lotSize(r.it));
+      const amt = lotsAmount(r.it, r.lots);
+      out.push(lotSize(r.it) === 1
+        ? `・${lineNm(r.it)}　${fmt(r.lots)} ${lotName(r.it)}　${money(amt)}`
+        : `・${lineNm(r.it)}　${fmt(r.lots)} ${lotName(r.it)}（${fmt(total)} ${r.it.unit}）　${money(amt)}`);
+    }
+    out.push(`　${lj('subtotal')}　${money(g.sum)}`);
+  });
+  out.push('', `${lj('lineTotal')}　${money(today)}`);
+  if(later) out.push(`${lj('laterTotal')}　${money(later)}`);
+  out.push('', L.priceNote[0]); if(LINE_BI) out.push(L.priceNote[1]);
+  return out.join('\n');
+}
+/* 設定画面から、LINEに1通だけテストを送って結果を確かめる。
+   応答を読みたいので、書き込み（POST）ではなく履歴の復元と同じ JSONP で呼ぶ。 */
+async function lineTest(btn){
+  if(!state.sheetUrl){ toast(pick('lineNoUrl')); return; }
+  const label = btn.textContent;
+  btn.disabled = true; btn.textContent = pick('lineTesting');
+  try{
+    const r = await jsonp(state.sheetUrl, {mode:'linetest'}, 25000);
+    if(r && r.ok) toast(pick('lineTestOk'));
+    else toast(pick('lineTestNg') + String((r && r.error) || '').slice(0, 90));
+  }catch(e){
+    toast(pick('lineTestNg'));
+  }finally{
+    btn.disabled = false; btn.textContent = label;
+  }
+}
+function snapshot(){
+  const d = new Date();
+  const today = ymd(d);
+  for(const it of state.items){
+    const c = num(state.counts[it.id]);
+    if(c === null) continue;
+    const p = state.prev[it.id];
+    const u = usedQty(it);
+    if(p && p.date && u !== null){
+      const days = dayGap(p.date, today);
+      /* 使用履歴は実量（g など）で残す。入数を変えても数字がぶれないように */
+      if(days > 0 && days <= 90) state.history.push({id:it.id, d:today, used:toUnits(it, u), days});
+    }
+    /* 前回在庫・前回発注はロット数で持つ（納品画面もロットで数えるため）。
+       同じ日に記録をやり直したときは、入力済みの納品実数を消さない。 */
+    const keep = (p && p.date === today) ? p.received : null;
+    state.prev[it.id] = {stock:c, order:orderLots(it) || 0, date:today, received:keep};
+  }
+  /* 記録したら、次にアプリを開いたときに在庫の入力を空に戻す。
+     前日の数字が残ったまま記録されて、偽の使用量が入るのを防ぐため。
+     その場で消さないのは、発注リストのコピーをそのあと使うため。 */
+  state.clearNext = true;
+  if(state.history.length > 3000) state.history = state.history.slice(-3000);
+  state.lastSent = `${ymd(d)} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  save();
+}
+/* Apps Script は POST に別ドメインへのリダイレクトを返すため、通常の fetch では応答を読めず
+   「失敗した」と誤判定してしまう。実際にはシートへの書き込みは成功しているので、
+   そこで再送すると行が二重に入る。no-cors で一度だけ送り、応答は読まずに扱う。
+   万一届かなかった場合は未送信キューに残し、あとから同じ payload（同じ batchId）で送り直す。 */
+const newBatchId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
+const SEND_TIMEOUT = 20000;
+/* 同じ内容をもう一度押しても二重に記録しないよう、記録した時点の入力内容を覚えておく */
+const countsSig = () => ymd(new Date()) + '|' + JSON.stringify(state.counts);
+const alreadyRecorded = () => !!state.recordedSig && state.recordedSig === countsSig();
+let sending = false;
+async function postRows(payload){
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), SEND_TIMEOUT);
+  try{
+    await fetch(state.sheetUrl, {
+      method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:payload, signal:ctl.signal
+    });
+    return true;
+  }catch(e){
+    return false;
+  }finally{
+    clearTimeout(timer);
+  }
+}
+function bindSheet(){
+  const sendBtn = document.getElementById('sheetSend');
+  const csvBtn = document.getElementById('sheetCsv');
+  const obSend = document.getElementById('obSend');
+  const obDrop = document.getElementById('obDrop');
+  if(csvBtn) csvBtn.onclick = () => {
+    const rows = buildRows();
+    if(!rows.length) return;
+    const head = Object.keys(rows[0]);
+    copy([head.join(','), ...rows.map(r => head.map(h => String(r[h] ?? '')).join(','))].join('\n'));
+  };
+  if(obSend) obSend.onclick = async () => {
+    if(!state.sheetUrl){ toast(pick('sheetNoUrl')); return; }
+    obSend.disabled = true; obSend.textContent = pick('recSaving');
+    try{
+      const keep = [];
+      for(const payload of (state.outbox || [])) if(!(await postRows(payload))) keep.push(payload);
+      state.outbox = keep; save();
+      toast(pick(keep.length ? 'outboxFail' : 'outboxOk'));
+    }finally{
+      obSend.disabled = false; obSend.textContent = pick('outboxSend');
+      go(view);
+    }
+  };
+  if(obDrop) obDrop.onclick = () => {
+    if(!confirm(pick('confirmDrop'))) return;
+    state.outbox = []; save(); go(view);
+  };
+  /* 発注の確定。シートが未設定でも端末には必ず記録する（納品画面と自動提案がこれを使う） */
+  if(sendBtn) sendBtn.onclick = async () => {
+    if(sending || alreadyRecorded()) return;
+    const rows = buildRows();
+    if(!rows.length) return;
+    sending = true;
+    sendBtn.disabled = true; sendBtn.textContent = pick('recSaving');
+    let msg = 'recOkLocal';
+    try{
+      if(state.sheetUrl){
+        /* LINE通知が有効なら本文も一緒に送る。発注が0件のときは本文が空になり、LINEには飛ばない。
+           未送信キューに積んだ場合も同じ payload を送り直すので、あとからLINEに届く。
+           同じ batchId は Apps Script 側で弾かれるため、再送しても二重には飛ばない。 */
+        const lineText = state.lineOn === false ? '' : buildLineText();
+        const payload = JSON.stringify({store:state.store, batchId:newBatchId(), rows, lineText});
+        if(await postRows(payload)) msg = lineText ? 'recOkLine' : 'recOkSheet';
+        else { state.outbox = [...(state.outbox || []), payload].slice(-20); msg = 'recOkOffline'; }
+      }
+      state.recordedSig = countsSig();
+      snapshot();
+      toast(pick(msg));
+    }finally{
+      sending = false;
+      go(view);
+    }
+  };
+}
+
+/* ============ 設定 ============ */
+function renderMaster(){
+  const op = k => secOpen[k] ? ' open' : '';
+  const chev = `<span class="chev">›</span>`;
+  const lineIsOn = state.lineOn !== false;
+  const isLocked = lockOn();
+  const unitsN = (state.units||[]).length;
+  const supN = state.suppliers.length;
+  const itemN = state.items.length;
+
+  let html = `<details class="secacc" data-sec="basic"${op('basic')}>
+    <summary><span class="ico">⚙️</span><span class="ttl"><span class="th-ja">${two('genSect')}</span><span class="sub">${esc(state.store) || '—'}</span></span>${chev}</summary>
+    <div class="secbody"><div class="setrow">
+    <label class="wide">${two('fStore')}<input id="setStore" value="${esc(state.store)}"></label>
+    <label>${two('fCur')}<select id="setCur">
+      <option value="NT$" ${state.currency==='NT$'?'selected':''}>新台幣 (NT$)</option>
+      <option value="¥" ${state.currency==='¥'?'selected':''}>円 (¥)</option>
+      <option value="$" ${state.currency==='$'?'selected':''}>USD ($)</option>
+    </select></label>
+    <label>${two('fLang')}<select id="setLang">
+      <option value="both" ${state.lang==='both'?'selected':''}>繁體中文 + 日本語</option>
+      <option value="th" ${state.lang==='th'?'selected':''}>繁體中文</option>
+      <option value="ja" ${state.lang==='ja'?'selected':''}>日本語</option>
+    </select></label>
+    <label class="wide">${two('fGroup')}<select id="setGroup">
+      <option value="sup" ${state.groupBy==='sup'?'selected':''}>${one('bySup')}</option>
+      <option value="cat" ${state.groupBy==='cat'?'selected':''}>${one('byCat')}</option>
+    </select></label>
+    <label class="wide">${two('fSheetUrl')}<input type="url" inputmode="url" placeholder="https://script.google.com/macros/s/..." id="setSheet" value="${esc(state.sheetUrl||'')}"></label>
+    <p class="cap">${pick('sheetCap')}</p>
+    <p class="cap verrow"><span class="num">${pick('fVersion')}：${esc(buildStamp())}</span>
+      <button type="button" id="chkUpd">${pick('updCheck')}</button></p>
+  </div></div></details>`;
+
+  html += `<details class="secacc" data-sec="line"${op('line')}>
+    <summary><span class="ico">💬</span><span class="ttl"><span class="th-ja">${two('lineSect')}</span><span class="sub">${pick('lineOn')}</span></span><span class="badge ${lineIsOn?'':'off'}">${lineIsOn?'ON':'OFF'}</span>${chev}</summary>
+    <div class="secbody">
+    <div class="setrow">
+      <p class="cap" style="margin:0">${pick('lineDesc')}</p>
+      <label class="wide" style="flex-direction:row;align-items:center;gap:8px">
+        <input type="checkbox" id="setLineOn" style="width:18px;height:18px;flex:none" ${state.lineOn === false ? '' : 'checked'}>
+        <span>${pick('lineOn')}</span></label>
+      <p class="cap">${pick('lineNote')}</p>
+    </div>
+    <button class="addbtn" id="lineTestBtn" style="margin-bottom:2px">${one('lineTestBtn')}</button>
+    </div></details>`;
+
+  html += `<details class="secacc" data-sec="master"${op('master')}>
+    <summary><span class="ico">🔄</span><span class="ttl"><span class="th-ja">${two('mstSect')}</span><span class="sub">${state.masterRev ? (pick('mstState')+'：'+state.masterRev) : pick('mstNever')}</span></span><span class="badge ${masterDirty()?'off':''}">${masterDirty() ? pick('mstDirtyShort') : (state.masterRev ? '#'+state.masterRev : '—')}</span>${chev}</summary>
+    <div class="secbody">
+    <div class="setrow">
+      <p class="cap" style="margin:0">${pick('mstDesc')}</p>
+      <p class="cap">${pick('mstState')}：${state.masterRev
+        ? `${state.masterRev}${state.masterAt ? `（${esc(state.masterAt)}${state.masterBy ? ' ・ '+esc(state.masterBy) : ''}）` : ''}`
+        : pick('mstNever')}</p>
+      ${masterDirty() ? `<p class="cap" style="color:var(--warn,#a15c00)">${pick('mstLocal')}</p>` : ''}
+    </div>
+    <button class="addbtn pushbtn" id="mstPushBtn">${one('mstPush')}</button>
+    <button class="addbtn pullbtn" id="mstPullBtn" style="margin-bottom:2px">${one('mstPull')}</button>
+    <div class="setrow" style="margin-top:10px">
+      <p class="cap" style="margin:0"><b>${pick('mstImpTtl')}</b></p>
+      <p class="cap">${pick('mstImpDesc')}</p>
+      <textarea id="mstImpTxt" rows="4" spellcheck="false" autocomplete="off" style="width:100%;box-sizing:border-box;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;padding:8px;border:1px solid var(--line,#ccc);border-radius:10px;background:var(--card,#fff);color:inherit" placeholder='{"ver":2,"items":[...]}'></textarea>
+      <label class="cap" style="display:block;margin-top:6px">${pick('mstImpFile')}<input type="file" id="mstImpFile" accept=".json,.txt,application/json,text/plain" style="display:block;margin-top:4px;max-width:100%"></label>
+    </div>
+    <button class="addbtn" id="mstImpBtn" style="margin-bottom:2px">${one('mstImpBtn')}</button>
+    </div></details>`;
+
+  html += `<details class="secacc" data-sec="lock"${op('lock')}>
+    <summary><span class="ico">🔒</span><span class="ttl"><span class="th-ja">${two('lockSect')}</span><span class="sub">${pick(isLocked ? 'lockStateOn' : 'lockStateOff')}</span></span><span class="badge ${isLocked?'':'off'}">${isLocked?'ON':'OFF'}</span>${chev}</summary>
+    <div class="secbody">
+    <div class="setrow">
+      <p class="cap" style="margin:0">${pick('lockDesc')}</p>
+      <p class="cap"><b>${pick(isLocked ? 'lockStateOn' : 'lockStateOff')}</b></p>
+      ${isLocked ? `<label class="wide">${two('lockCurrent')}<input type="password" inputmode="numeric" maxlength="8" autocomplete="off" id="pinCur"></label>` : ''}
+      <label class="wide">${two('lockNew')}<input type="password" inputmode="numeric" maxlength="8" autocomplete="off" id="pinNew"></label>
+      <label class="wide">${two('lockConfirm')}<input type="password" inputmode="numeric" maxlength="8" autocomplete="off" id="pinNew2"></label>
+      <p class="cap">${pick('lockForgot')}</p>
+      ${isLocked ? `<p class="cap">${pick('lockRelock')}</p>` : ''}
+    </div>
+    <button class="addbtn" id="pinSave">${one(isLocked ? 'lockChange' : 'lockEnable')}</button>
+    ${isLocked ? `<div style="margin:-14px 0 2px"><button class="danger" id="pinOff">${one('lockDisable')}</button></div>` : ''}
+    </div></details>`;
+
+  html += `<details class="secacc" data-sec="unit"${op('unit')}>
+    <summary><span class="ico">📏</span><span class="ttl"><span class="th-ja">${two('unitSect')}</span><span class="sub">${(state.units||[]).slice(0,4).join('・')}${unitsN>4?'…':''}</span></span><span class="badge">${unitsN}${L.unitCount[state.lang==='ja'?1:0]}</span>${chev}</summary>
+    <div class="secbody">
+    <div class="holchips">${(state.units||[]).map(u => `<button type="button" data-unitdel="${esc(u)}">${esc(u)}</button>`).join('') || `<span class="note">${pick('none')}</span>`}</div>
+    <div class="add"><input type="text" id="newUnitInput" placeholder="${pick('newUnit')}"><button type="button" id="addUnitBtn">${pick('addBtn')}</button></div>
+    </div></details>`;
+
+  html += `<details class="secacc" data-sec="sugg"${op('sugg')}>
+    <summary><span class="ico">📈</span><span class="ttl"><span class="th-ja">${two('sugSect')}</span><span class="sub">${pick('sugCycle')} ${Number(state.cycle)||3}${state.lang==='ja'?'日':' 天'}・${pick('sugSafety')} ${Number(state.safety)||0}%</span></span>${chev}</summary>
+    <div class="secbody">
+    <div class="setrow">
+      <p class="cap" style="margin:0">${pick('sugDesc')}</p>
+      <label>${two('sugCycle')}<input type="number" step="1" min="1" inputmode="numeric" id="setCycle" value="${Number(state.cycle) || 3}"></label>
+      <label>${two('sugSafety')}<input type="number" step="5" min="0" inputmode="numeric" id="setSafety" value="${Number(state.safety) || 0}"></label>
+      <p class="cap">${pick('histCount').replace(/%n/g, state.history.length)}</p>
+      <p class="cap">${pick('sugParOnly')}</p>
+    </div>
+    <details class="mcard howto">
+      <summary><span class="nmwrap">${two('sugHowTitle')}</span></summary>
+      <div class="hbody">
+        <p class="f">${two('sugFormula')}</p>
+        <p>${two('sugH1')}</p>
+        <p>${two('sugH2')}</p>
+        <p>${two('sugH3')}</p>
+        <p class="sub">${two('sugWhy')}</p>
+        <div class="ex">${['sugEx','sugExPar','sugExLot'].map(k => `<p>${two(k)}</p>`).join('')}</div>
+        <p class="sub">${two('sugTip')}</p>
+      </div>
+    </details>
+    <button class="addbtn" id="sugCalc" style="margin-bottom:14px">${one('sugCalc')}</button>
+    <div id="sugBox"></div>
+    <div class="setrow" style="margin-top:14px">
+      <p class="cap" style="margin:0">${pick('restDesc')}</p>
+    </div>
+    <button class="addbtn" id="restHist" style="margin-bottom:2px">${one('restTitle')}</button>
+    </div></details>`;
+
+  const holToday = ymd(new Date());
+  const holUp = (state.hol || []).filter(h => h.d >= holToday).slice(0, 12);
+  const holShort = d => String(d).slice(0, 4) === String(new Date().getFullYear())
+    ? String(d).slice(5).replace('-', '/')
+    : String(d).replace(/-/g, '/');   /* 年をまたぐぶんは年も出す */
+  html += `<details class="secacc" data-sec="hol"${op('hol')}>
+    <summary><span class="ico">📅</span><span class="ttl"><span class="th-ja">${two('holSect')}</span><span class="sub">${holUp.length ? (holShort(holUp[0].d)+' '+esc(holName(holUp[0]))) : pick('holNone')}</span></span><span class="badge">${(state.hol||[]).length}</span>${chev}</summary>
+    <div class="secbody">
+    <div class="setrow">
+      <p class="cap" style="margin:0">${pick('holDesc')}</p>
+      <p class="cap">${(state.hol || []).length ? pick('holCount').replace(/%n/g, state.hol.length) : pick('holNone')}</p>
+    </div>
+    <div class="add">
+      <input type="date" id="holD">
+      <input type="text" id="holN" placeholder="${pick('holName')}">
+      <button type="button" id="holAdd">${pick('addBtn')}</button>
+    </div>
+    <p class="cap" style="margin:-12px 2px 0">${pick('holUpcoming')}</p>
+    <div class="holchips" style="margin-bottom:16px">${holUp.map(h => `<button type="button" data-holdel2="${esc(h.d)}" data-n="${esc(h.th)}">${esc(holShort(h.d))} ${esc(holName(h))}</button>`).join('') || `<span class="note">${pick('none')}</span>`}</div>
+    ${Object.keys(TH_HOLIDAYS).map(y => `<button class="addbtn" type="button" data-holy="${y}" style="margin-bottom:8px">${one('holAddY').replace(/%n/g, y)}</button>`).join('')}
+    <p class="cap" style="margin:4px 2px 14px;font-size:11px;color:var(--muted)">${pick('holNote')}</p>
+    <div style="margin-bottom:2px"><button class="danger" id="holClearBtn">${one('holClear')}</button></div>
+    </div></details>`;
+
+  html += `<details class="secacc" data-sec="sup"${op('sup')}>
+    <summary><span class="ico">🏢</span><span class="ttl"><span class="th-ja">${two('supSect')}</span><span class="sub">${supN}${L.supCount[state.lang==='ja'?1:0]}登録</span></span><span class="badge">${supN}</span>${chev}</summary>
+    <div class="secbody">`;
+  for(const s of state.suppliers){
+    html += `<details class="mcard">
+      <summary><span class="nmwrap">${nm(s)}</span><span class="s">${esc(restLabel(s) || pick('noClosed'))}${s.cutoff ? ' / '+esc(s.cutoff) : ''}<br>${L.nextOrderDay[state.lang==='ja'?1:0]}${dateLabel(nextOrderDate(s))}</span></summary>
+      <div class="fields">
+        <label class="wide">${two('fSupName')} (TH)<input data-sf2="name" data-id="${s.id}" value="${esc(s.name)}"></label>
+        <label class="wide">${two('fSupName')} (JA)<input data-sf2="nameJa" data-id="${s.id}" value="${esc(s.nameJa||'')}"></label>
+        <label class="wide">${two('fUrl')}<input type="url" inputmode="url" placeholder="https://" data-sf2="url" data-id="${s.id}" value="${esc(s.url||'')}"></label>
+        <label class="wide">${two('fPhone')}<input data-sf2="phone" data-id="${s.id}" value="${esc(s.phone||'')}"></label>
+        <label class="wide">${two('fEmail')}<input type="email" data-sf2="email" data-id="${s.id}" value="${esc(s.email||'')}"></label>
+        <label class="wide">${two('fNote')}<input data-sf2="note" data-id="${s.id}" value="${esc(s.note||'')}"></label>
+        <div class="days"><span class="cap">${one('fClosed')}</span><div class="dd">
+          ${WD_TH.map((w,i) => `<button type="button" data-day="${i}" data-id="${s.id}" aria-pressed="${(s.closed||[]).includes(i)}">${state.lang==='ja'?WD_JA[i]:w}</button>`).join('')}
+        </div></div>
+        <label class="wide">${two('fCutoff')}<input type="time" data-sf2="cutoff" data-id="${s.id}" value="${esc(s.cutoff||'')}"></label>
+        <label class="wide">${two('fLead')}<input type="number" step="1" min="0" inputmode="numeric" data-sf2n="lead" data-id="${s.id}" value="${s.lead === undefined || s.lead === '' ? 1 : s.lead}"></label>
+        <div class="hol"><span class="cap">${one('fHoliday')}</span>
+          <div class="add"><input type="date" data-hol="${s.id}"><button type="button" data-holadd="${s.id}">${pick('addBtn')}</button></div>
+          <div class="holchips">${(s.holidays||[]).slice().sort().map(h => `<button type="button" data-holdel="${s.id}" data-d="${h}">${esc(h)}</button>`).join('') || `<span class="note">${pick('none')}</span>`}</div>
+        </div>
+        <button class="del" data-supdel="${s.id}">${one('delSup')}</button>
+      </div></details>`;
+  }
+  html += `<button class="addbtn" id="addSup" style="margin-bottom:2px">${one('addSup')}</button>
+    </div></details>`;
+
+  html += `<details class="secacc" data-sec="item"${op('item')}>
+    <summary><span class="ico">📦</span><span class="ttl"><span class="th-ja">${two('itemSect')}</span><span class="sub">${itemN}${L.itemCount[state.lang==='ja'?1:0]}登録</span></span><span class="badge">${itemN}</span>${chev}</summary>
+    <div class="secbody">`;
+  for(const it of state.items){
+    const s = supOf(it);
+    html += `<details class="mcard">
+      <summary><span class="nmwrap">${nm(it)}</span><span class="s num">${esc(s ? s.name : '—')}<br>${fmt(it.par)} ${lotName(it)}</span></summary>
+      <div class="fields">
+        <label class="wide">${two('fName')}<input data-f="name" data-id="${it.id}" value="${esc(it.name)}"></label>
+        <label class="wide">${two('fNameJa')}<input data-f="nameJa" data-id="${it.id}" value="${esc(it.nameJa||'')}"></label>
+        <label class="wide">${two('supplier')}<select data-f="supId" data-id="${it.id}">
+          <option value="">—</option>
+          ${state.suppliers.map(x => `<option value="${x.id}" ${x.id===it.supId?'selected':''}>${esc(x.name)}</option>`).join('')}
+        </select></label>
+        <label>${two('fCat')}<input data-f="cat" data-id="${it.id}" value="${esc(it.cat||'')}"></label>
+        <label>${two('fUnit')}<select data-f="unit" data-id="${it.id}">
+          ${Array.from(new Set([...(state.units||[]), it.unit].filter(Boolean))).map(u => `<option value="${esc(u)}" ${u===it.unit?'selected':''}>${esc(u)}</option>`).join('')}
+        </select></label>
+        <label>${two('fPar')} (${lotName(it)})<input type="number" step="any" inputmode="decimal" data-f="par" data-id="${it.id}" value="${it.par}">
+          <span class="eq num" data-eq="${it.id}">${parEqText(it)}</span></label>
+        <label>${two('fLotSize')} (${esc(it.unit)})<input type="number" step="any" inputmode="decimal" data-f="lot" data-id="${it.id}" value="${it.lot}"></label>
+        <label>${two('fLotUnit')}<select data-f="lotUnit" data-id="${it.id}">
+          <option value="" ${!it.lotUnit ? 'selected' : ''}>${L.lotGeneric[0]}／${L.lotGeneric[1]}</option>
+          ${LOT_UNITS.map(u => `<option value="${u.k}" ${it.lotUnit===u.k?'selected':''}>${u.th}／${u.ja}</option>`).join('')}
+        </select></label>
+        <label>${two('fLotPrice')} (${esc(state.currency)})<input type="number" step="any" inputmode="decimal" data-f="price" data-id="${it.id}" value="${it.price}"></label>
+        <p class="cap wide">${pick('lotHelp')}</p>
+        <button class="del" data-del="${it.id}">${one('delItem')}</button>
+      </div></details>`;
+  }
+  html += `<button class="addbtn" id="addItem" style="margin-bottom:2px">${one('addItem')}</button>
+    </div></details>`;
+
+  html += `<div style="margin-top:16px"><button class="danger" id="resetAll">${one('resetAll')}</button></div>
+    <div><button class="danger" id="clearHist">${one('histClear')}</button></div>`;
+
+  app.innerHTML = html;
+  bar.hidden = true;
+  bindSecAcc();
+
+  document.getElementById('setStore').oninput = e => { state.store = e.target.value; storeTitle.textContent = state.store || '庫存盤點'; save(); };
+  document.getElementById('setCur').onchange = e => { state.currency = e.target.value; save(); renderMaster(); };
+  document.getElementById('setLang').onchange = e => { state.lang = e.target.value; applyLang(); save(); renderMaster(); };
+  document.getElementById('setGroup').onchange = e => { state.groupBy = e.target.value; save(); };
+  document.getElementById('setSheet').oninput = e => { state.sheetUrl = e.target.value.trim(); save(); };
+  const cyc = document.getElementById('setCycle');
+  cyc.oninput = e => { state.cycle = e.target.value === '' ? '' : Number(e.target.value); save(); };
+  cyc.onchange = e => {                     /* 1未満を入れても計算は3になるので、欄の数字も合わせる */
+    const v = num(e.target.value);
+    state.cycle = (v === null || v < 1) ? 3 : Math.round(v);
+    e.target.value = state.cycle; save();
+  };
+  const saf = document.getElementById('setSafety');
+  saf.oninput = e => { state.safety = e.target.value === '' ? 0 : Number(e.target.value); save(); };
+  saf.onchange = e => {
+    const v = num(e.target.value);
+    state.safety = (v === null || v < 0) ? 0 : v;
+    e.target.value = state.safety; save();
+  };
+  document.getElementById('sugCalc').onclick = renderSuggest;
+  document.getElementById('restHist').onclick = e => restoreHistory(e.currentTarget);
+  document.getElementById('setLineOn').onchange = e => { state.lineOn = e.target.checked; save(); };
+  document.getElementById('lineTestBtn').onclick = e => lineTest(e.currentTarget);
+  document.getElementById('mstPushBtn').onclick = e => pushMaster(e.currentTarget);
+  document.getElementById('mstImpFile').onchange = e => {
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    const r = new FileReader();
+    r.onload = () => { document.getElementById('mstImpTxt').value = String(r.result || ''); };
+    r.readAsText(f, 'utf-8');
+  };
+  document.getElementById('mstImpBtn').onclick = () => importMaster(document.getElementById('mstImpTxt').value);
+  document.getElementById('mstPullBtn').onclick = async e => {
+    const b = e.currentTarget, t = b.textContent;
+    b.disabled = true; b.textContent = pick('mstLoading');
+    try{ await pullMaster({manual:true}); }
+    finally{ b.disabled = false; b.textContent = t; }
+  };
+
+  document.getElementById('holAdd').onclick = () => {
+    const d = document.getElementById('holD').value;
+    const n = (document.getElementById('holN').value || '').trim();
+    if(!d) return;
+    if(!Array.isArray(state.hol)) state.hol = [];
+    const label = n || d;
+    if(!state.hol.some(h => h.d === d && h.th === label)){
+      state.hol.push({d, th: label, ja: label});
+      state.hol.sort((a, b) => a.d < b.d ? -1 : 1);
+      save();
+    }
+    renderMaster(); renderHolBar();
+  };
+  app.querySelectorAll('[data-holdel2]').forEach(b => {
+    b.onclick = () => {
+      state.hol = (state.hol || []).filter(h => !(h.d === b.dataset.holdel2 && h.th === b.dataset.n));
+      save(); renderMaster(); renderHolBar();
+    };
+  });
+  app.querySelectorAll('[data-holy]').forEach(b => {
+    b.onclick = () => {
+      const n = addHolidayYear(Number(b.dataset.holy));
+      save(); renderMaster(); renderHolBar();
+      toast(pick('holAdded').replace(/%n/g, n));
+    };
+  });
+  document.getElementById('holClearBtn').onclick = () => {
+    if(!confirm(pick('holClearOk'))) return;
+    state.hol = []; save(); renderMaster(); renderHolBar();
+  };
+  document.getElementById('chkUpd').onclick = async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true; btn.textContent = pick('updChecking');
+    const r = await checkForUpdate(true);
+    if(r === 'updating') return;                       /* 読み込み直すのでここで終わり */
+    btn.disabled = false; btn.textContent = pick('updCheck');
+    toast(pick(r === 'offline' ? 'updOffline' : 'updLatest'));
+  };
+
+  document.getElementById('pinSave').onclick = () => {
+    const cur = document.getElementById('pinCur');
+    if(lockOn() && !pinCheck(cur ? cur.value : '')){ toast(pick('lockWrong')); return; }
+    const a = (document.getElementById('pinNew').value || '').trim();
+    const b = (document.getElementById('pinNew2').value || '').trim();
+    if(!/^[0-9]{4,8}$/.test(a)){ toast(pick('lockBadDigits')); return; }
+    if(a !== b){ toast(pick('lockMismatch')); return; }
+    const was = lockOn();
+    state.pin = makePin(a); save(); flushSave();
+    unlocked = true; pinFailSet(0); pinWaitSet(0);
+    toast(pick(was ? 'lockChanged' : 'lockEnabled'));
+    renderMaster();
+  };
+  const pinOffBtn = document.getElementById('pinOff');
+  if(pinOffBtn) pinOffBtn.onclick = () => {
+    const cur = document.getElementById('pinCur');
+    if(!pinCheck(cur ? cur.value : '')){ toast(pick('lockWrong')); return; }
+    state.pin = null; save(); flushSave();
+    unlocked = true; pinFailSet(0); pinWaitSet(0);
+    toast(pick('lockDisabled'));
+    renderMaster();
+  };
+
+  app.querySelectorAll('[data-sf2]').forEach(el => {
+    el.oninput = () => { const s = state.suppliers.find(x => x.id === el.dataset.id); if(s){ s[el.dataset.sf2] = el.value; save(); } };
+  });
+  app.querySelectorAll('[data-sf2n]').forEach(el => {
+    el.oninput = () => { const s = state.suppliers.find(x => x.id === el.dataset.id); if(s){ s[el.dataset.sf2n] = el.value === '' ? '' : Number(el.value); save(); } };
+  });
+  app.querySelectorAll('[data-day]').forEach(b => {
+    b.onclick = () => {
+      const s = state.suppliers.find(x => x.id === b.dataset.id);
+      const d = Number(b.dataset.day);
+      s.closed = (s.closed||[]).includes(d) ? s.closed.filter(x => x !== d) : [...(s.closed||[]), d].sort();
+      b.setAttribute('aria-pressed', String(s.closed.includes(d)));
+      save();
+      const sm = b.closest('details').querySelector('.s');
+      sm.innerHTML = `${esc(restLabel(s) || pick('noClosed'))}${s.cutoff ? ' / '+esc(s.cutoff) : ''}<br>${L.nextOrderDay[state.lang==='ja'?1:0]}${dateLabel(nextOrderDate(s))}`;
+    };
+  });
+  app.querySelectorAll('[data-holadd]').forEach(b => {
+    b.onclick = () => {
+      const s = state.suppliers.find(x => x.id === b.dataset.holadd);
+      const inp = app.querySelector(`[data-hol="${s.id}"]`);
+      if(!inp.value) return;
+      if(!s.holidays.includes(inp.value)) s.holidays.push(inp.value);
+      save(); reopenMaster(s.id);
+    };
+  });
+  app.querySelectorAll('[data-holdel]').forEach(b => {
+    b.onclick = () => {
+      const s = state.suppliers.find(x => x.id === b.dataset.holdel);
+      s.holidays = s.holidays.filter(d => d !== b.dataset.d);
+      save(); reopenMaster(s.id);
+    };
+  });
+  app.querySelectorAll('[data-supdel]').forEach(b => {
+    b.onclick = () => {
+      const s = state.suppliers.find(x => x.id === b.dataset.supdel);
+      const n = state.items.filter(i => i.supId === s.id).length;
+      if(!confirm(`${s.name} — ${n} ${L.items[0]}?`)) return;
+      state.items.forEach(i => { if(i.supId === s.id) i.supId = ''; });
+      state.suppliers = state.suppliers.filter(x => x.id !== s.id);
+      if(state.supFilter === s.id) state.supFilter = null;
+      save(); renderMaster();
+    };
+  });
+  document.getElementById('addSup').onclick = () => {
+    const id = 's' + Date.now().toString(36);
+    state.suppliers.push({id, name:'新廠商', nameJa:'新しい仕入先', url:'', phone:'', email:'', note:'', closed:[0], holidays:[], cutoff:''});
+    save(); reopenMaster(id, true);
+  };
+  document.getElementById('addUnitBtn').onclick = () => {
+    const inp = document.getElementById('newUnitInput');
+    const v = (inp.value || '').trim();
+    if(!v) return;
+    if(!state.units.includes(v)) state.units.push(v);
+    save(); renderMaster();
+  };
+  app.querySelectorAll('[data-unitdel]').forEach(b => {
+    b.onclick = () => {
+      state.units = (state.units||[]).filter(u => u !== b.dataset.unitdel);
+      save(); renderMaster();
+    };
+  });
+  app.querySelectorAll('[data-f]').forEach(el => {
+    const h = ev => {
+      const it = state.items.find(x => x.id === el.dataset.id);
+      if(!it) return;
+      const f = el.dataset.f;
+      if(['par','lot','price'].includes(f)){
+        /* 数字の欄。打ち直し中の空欄では上書きせず、欄を離れたときに範囲を直す。
+           入数（lot）を0にするとロット換算が全部狂うため、1を下限にする。 */
+        const raw = String(el.value).trim();
+        if(raw === ''){ if(ev && ev.type === 'input') return; }
+        let v = num(raw);
+        if(v === null || !isFinite(v) || v < 0) v = 0;
+        if(f === 'lot' && !(v > 0)) v = 1;
+        it[f] = v;
+        if(ev && ev.type !== 'input' && String(v) !== raw) el.value = v;
+      } else it[f] = el.value;
+      /* 基準在庫や入数を触ったら、横の実量表示もその場で合わせる */
+      if(['par','lot'].includes(f)){
+        const eq = app.querySelector(`[data-eq="${it.id}"]`);
+        if(eq) eq.textContent = parEqText(it);
+      }
+      save();
+    };
+    el.oninput = h; el.onchange = h;
+  });
+  app.querySelectorAll('[data-del]').forEach(b => {
+    b.onclick = () => {
+      if(!confirm(pick('confirmDelItem'))) return;
+      state.items = state.items.filter(x => x.id !== b.dataset.del);
+      delete state.counts[b.dataset.del]; delete state.prev[b.dataset.del];
+      save(); renderMaster();
+    };
+  });
+  document.getElementById('addItem').onclick = () => {
+    const id = 'i' + Date.now().toString(36);
+    const sid = state.supFilter || (state.suppliers[0]||{}).id || '';
+    const sup = state.suppliers.find(x => x.id === sid);
+    state.items.push({id, cat: sup ? sup.name : '', name:'新品項', nameJa:'新しい品目', unit:(state.units||['g'])[0], par:1, lot:1, lotUnit:'', price:0, supId: sid});
+    save(); renderMaster();
+    const cards = app.querySelectorAll('.mcard');
+    const el = cards[cards.length-1];
+    el.open = true; el.scrollIntoView({block:'center'}); el.querySelector('input').select();
+  };
+  document.getElementById('resetAll').onclick = () => {
+    if(!confirm(pick('confirmReset'))) return;
+    state.counts = {}; state.recordedSig = ''; save(); toast(pick('resetDone'));
+  };
+  document.getElementById('clearHist').onclick = () => {
+    if(!confirm(pick('confirmHist'))) return;
+    state.history = []; save(); renderMaster(); toast(pick('histCleared'));
+  };
+}
+function reopenMaster(supId, focus){
+  renderMaster();
+  const el = [...app.querySelectorAll('.mcard')].find(c => c.querySelector(`[data-id="${supId}"]`));
+  if(el){ el.open = true; el.scrollIntoView({block:'center'}); if(focus) el.querySelector('input').select(); }
+}
+
+/* ---------- 自動更新チェック ----------
+   GitHub Pages はHTMLを10分キャッシュするため、更新してもスマホに古い版が残ることがある。
+   サーバー側の Last-Modified と、いま動いている文書の document.lastModified を比べ、
+   新しければクエリを付けて読み込み直す（＝キャッシュを迂回する）。版番号を手で振る必要はない。 */
+const UPD_KEY = 'stock-order-app-updated-to';
+let updCheckedAt = 0;
+const buildStamp = () => {
+  const d = new Date(document.lastModified);
+  if(isNaN(d.getTime())) return '—';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+};
+function applyUpdate(stamp){
+  flushSave();
+  try{ sessionStorage.setItem(UPD_KEY, String(stamp)); }catch(e){}
+  location.replace(location.pathname + '?v=' + stamp);
+}
+function showUpdBar(stamp){
+  const el = document.getElementById('updbar');
+  if(!el) return;
+  el.innerHTML = `<span class="t">${pick('updNew')}</span>
+    <button type="button" id="updGo">${pick('updBtn')}</button>
+    <button type="button" class="x" id="updX" aria-label="${pick('updClose')}">✕</button>`;
+  el.hidden = false;
+  window.scrollTo(0, 0);
+  document.getElementById('updGo').onclick = () => applyUpdate(stamp);
+  document.getElementById('updX').onclick = () => { el.hidden = true; };
+}
+async function checkForUpdate(manual){
+  const now = Date.now();
+  if(!manual && now - updCheckedAt < 60000) return 'skip';
+  updCheckedAt = now;
+  let lm = null;
+  try{
+    const res = await fetch(location.pathname + '?t=' + now, {method:'HEAD', cache:'no-store'});
+    if(res.ok) lm = res.headers.get('last-modified');
+  }catch(e){ return 'offline'; }
+  if(!lm) return 'unknown';
+  const server = new Date(lm).getTime();
+  const mine = new Date(document.lastModified).getTime();
+  if(isNaN(server) || isNaN(mine) || server - mine <= 2000) return 'latest';
+  if(manual){ applyUpdate(server); return 'updating'; }
+  let tried = null;
+  try{ tried = sessionStorage.getItem(UPD_KEY); }catch(e){}
+  if(tried === String(server)){ showUpdBar(server); return 'bar'; }   /* 一度やり直しても古いまま → 自動では繰り返さない */
+  applyUpdate(server);
+  return 'updating';
+}
+
+/* ---------- 共通 ---------- */
+const app = document.getElementById('app');
+const bar = document.getElementById('bar');
+const storeTitle = document.getElementById('storeTitle');
+/* 設定画面のアコーディオン開閉状態。保存はしない（毎回すべて閉じた状態からで良い項目もあるため）。
+   基本設定・マスタの共有だけ最初から開いておく。 */
+let secOpen = {basic:true, line:false, master:true, lock:false, unit:false, sugg:false, hol:false, sup:false, item:false};
+function bindSecAcc(){
+  app.querySelectorAll('details[data-sec]').forEach(d => {
+    d.ontoggle = () => { secOpen[d.dataset.sec] = d.open; };
+  });
+}
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function dateStr(){ const d = new Date(); return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} (${wd(d.getDay())})`; }
+function applyLang(){ document.body.className = state.lang === 'both' ? '' : 'lang-' + state.lang; }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), 2200);
+}
+function copy(text){
+  const done = () => toast(pick('copied'));
+  if(navigator.clipboard && window.isSecureContext){ navigator.clipboard.writeText(text).then(done).catch(fallback); }
+  else fallback();
+  function fallback(){
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); done(); }catch(e){ toast(pick('copyFail')); }
+    ta.remove();
+  }
+}
+function go(v){
+  if(view === 'master' && v !== 'master') unlocked = false;   /* 設定画面から離れたら再びロックする */
+  view = v;
+  document.querySelectorAll('[data-nav]').forEach(b => b.setAttribute('aria-current', String(b.dataset.nav === v)));
+  window.scrollTo(0,0);
+  renderHolBar();
+  if(v === 'count') renderCount();
+  else if(v === 'recv') renderRecv();
+  else if(v === 'result') renderResult();
+  else if(lockOn() && !unlocked) renderLock();
+  else renderMaster();
+}
+app.addEventListener('input', e => {
+  const t = e.target;
+  if(t.dataset.recv){
+    const p = state.prev[t.dataset.recv];
+    if(p){
+      const v = num(t.value);
+      p.received = v === null ? null : Math.max(0, v);      /* マイナスは0扱い */
+      save(); updateRecvRow(t);
+    }
+    return;
+  }
+  if(!t.dataset.count) return;
+  const c = num(t.value);
+  state.counts[t.dataset.count] = c === null ? '' : String(Math.max(0, c));
+  save(); updateRow(t);
+});
+app.addEventListener('click', e => {
+  const rb = e.target.closest('[data-rstep]');
+  if(rb){
+    const input = app.querySelector(`[data-recv="${rb.dataset.rid}"]`);
+    const p = state.prev[rb.dataset.rid];
+    if(!input || !p) return;
+    const cur = num(input.value);
+    const next = Math.max(0, round2((cur === null ? Number(p.order || 0) : cur) + Number(rb.dataset.rstep)));
+    input.value = next; p.received = next;
+    save(); updateRecvRow(input);
+    return;
+  }
+  const b = e.target.closest('[data-step]');
+  if(!b) return;
+  const input = app.querySelector(`[data-count="${b.dataset.id}"]`);
+  const next = Math.max(0, round2((num(input.value) ?? 0) + Number(b.dataset.step)));
+  input.value = next; state.counts[b.dataset.id] = String(next);
+  save(); updateRow(input);
+});
+/* 画面上部の進捗バーの数字と帯を書き換える。
+   入力のたびにここを通さないと、画面を描き直すまで 0 のまま止まる */
+function updateProgress(s){
+  const wrap = app.querySelector('.progresswrap');
+  if(!wrap) return;
+  const st = s || summary();
+  const pct = st.total ? Math.round(st.counted / st.total * 100) : 0;
+  const nums = wrap.querySelectorAll('.prow .num');
+  if(nums[0]) nums[0].textContent = `${st.counted} / ${st.total}${L.filled[state.lang==='ja'?1:0]}`;
+  if(nums[1]) nums[1].textContent = `${pct}%`;
+  const fill = wrap.querySelector('.pfill');
+  if(fill) fill.style.width = pct + '%';
+}
+function updateRow(input){
+  const it = state.items.find(x => x.id === input.dataset.count);
+  const lots = orderLots(it);
+  const row = input.closest('.row');
+  const flag = row.querySelector('.flag');
+  if(lots === null){ flag.className='flag blank'; flag.textContent = pick('notFilled'); }
+  else if(lots > 0){
+    flag.className='flag need';
+    flag.textContent = `${L.orderN[state.lang==='ja'?1:0]}${lotsLabel(it, lots)}`;
+  }
+  else { flag.className='flag ok'; flag.textContent = pick('enough'); }
+  /* 行の色分けも、描き直しを待たずにここで切り替える */
+  row.classList.toggle('need', lots !== null && lots > 0);
+  row.classList.toggle('ok', lots === 0);
+  const s = summary();
+  updateProgress(s);
+  const sum = bar.querySelector('.sum');
+  if(sum) sum.innerHTML = `<b class="num">${s.counted} / ${s.total}${L.filled[state.lang==='ja'?1:0]}</b>${s.need}${L.shortN[state.lang==='ja'?1:0]}${money(s.amount)}`;
+  const g = document.getElementById('toResult');
+  if(g) g.disabled = !s.counted;
+}
+document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => go(b.dataset.nav));
+(async function init(){
+  await load();
+  applyLang();
+  document.getElementById('today').textContent = dateStr();
+  storeTitle.textContent = state.store || '庫存盤點';
+  go('count');
+  renderHolBar();
+  if(clearedOnBoot) toast(pick('recCleared'));
+  checkForUpdate();
+  /* 起動のたびに共有マスタを見に行く。版が上がっていれば取り込む */
+  pullMaster({});
+})();
+</script>
