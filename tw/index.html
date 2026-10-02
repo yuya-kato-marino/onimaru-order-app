@@ -2151,7 +2151,7 @@ const buildStamp = () => {
 function applyUpdate(stamp){
   flushSave();
   try{ sessionStorage.setItem(UPD_KEY, String(stamp)); }catch(e){}
-  location.replace(location.pathname + '?v=' + stamp);
+  location.replace(location.pathname + '?v=' + stamp + location.hash);   /* #gas=… を落とさない */
 }
 function showUpdBar(stamp){
   const el = document.getElementById('updbar');
@@ -2301,15 +2301,18 @@ function updateRow(input){
 document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => go(b.dataset.nav));
 /* 配布用リンクの「#gas=…」から Apps Script のURLを取り込む。
    「#」より後ろはサーバーに送られないので、URLは公開リポジトリにもアクセス記録にも残らない。
-   取り込んだらアドレスバーから消し、ブックマークやホーム画面にURLが残らないようにする。 */
+   #gas=… はアドレスバーに残す。LINE から開いたブラウザと、ホーム画面のアイコンやふだんの Chrome は
+   保存場所が別になることがあるため、そのページから「Chromeで開く」「ホーム画面に追加」をしても
+   URLが一緒に引き継がれ、開いた先でも自動で設定されるようにする。 */
 function takeUrlFromLink(){
+  if(!location.hash.includes('gas=')) return null;
   let raw = '';
   try{ raw = new URLSearchParams(location.hash.replace(/^#/, '')).get('gas') || ''; }catch(e){ raw = ''; }
-  if(!location.hash.includes('gas=')) return null;
-  const clean = location.pathname;   /* ?openExternalBrowser=1 なども一緒に消す */
-  try{ history.replaceState(null, '', clean); }catch(e){}
+  /* ?openExternalBrowser=1 は LINE 用なので消す（#gas=… は残す） */
+  if(location.search){ try{ history.replaceState(null, '', location.pathname + location.hash); }catch(e){} }
   const u = raw.trim();
   if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u)) return 'bad';
+  if(state.sheetUrl === u) return 'same';   /* すでに同じURLなら何もしない（ホーム画面から開くたびに通知を出さない） */
   state.sheetUrl = u;
   save(); flushSave();
   return 'ok';
