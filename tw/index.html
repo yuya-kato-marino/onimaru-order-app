@@ -567,7 +567,9 @@ const L = {
   updChecking:['檢查中…','確認中…'],
   updLatest:['已是最新','すでに最新です'],
   updOffline:['無法確認。請檢查網路連線','確認できませんでした。通信状態をご確認ください'],
-  fVersion:['這台裝置的版本','この端末の版']
+  fVersion:['這台裝置的版本','この端末の版'],
+  urlSetByLink:['已從連結設定 Apps Script 網址','リンクから Apps Script のURLを設定しました'],
+  urlBadLink:['連結中的網址不正確，未套用','リンクのURLが正しくないため、設定しませんでした']
 };
 const two = k => `<span class="th">${L[k][0]}</span><span class="ja">${L[k][1]}</span>`;
 const one = k => pick(k);   /* 台灣版：表示言語に合わせる */
@@ -2297,8 +2299,24 @@ function updateRow(input){
   if(g) g.disabled = !s.counted;
 }
 document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => go(b.dataset.nav));
+/* 配布用リンクの「#gas=…」から Apps Script のURLを取り込む。
+   「#」より後ろはサーバーに送られないので、URLは公開リポジトリにもアクセス記録にも残らない。
+   取り込んだらアドレスバーから消し、ブックマークやホーム画面にURLが残らないようにする。 */
+function takeUrlFromLink(){
+  let raw = '';
+  try{ raw = new URLSearchParams(location.hash.replace(/^#/, '')).get('gas') || ''; }catch(e){ raw = ''; }
+  if(!location.hash.includes('gas=')) return null;
+  const clean = location.pathname;   /* ?openExternalBrowser=1 なども一緒に消す */
+  try{ history.replaceState(null, '', clean); }catch(e){}
+  const u = raw.trim();
+  if(!/^https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec$/.test(u)) return 'bad';
+  state.sheetUrl = u;
+  save(); flushSave();
+  return 'ok';
+}
 (async function init(){
   await load();
+  const linkUrl = takeUrlFromLink();
   applyLang();
   document.getElementById('today').textContent = dateStr();
   storeTitle.textContent = state.store || '庫存盤點';
@@ -2307,6 +2325,13 @@ document.querySelectorAll('[data-nav]').forEach(b => b.onclick = () => go(b.data
   if(clearedOnBoot) toast(pick('recCleared'));
   checkForUpdate();
   /* 起動のたびに共有マスタを見に行く。版が上がっていれば取り込む */
-  pullMaster({});
+  if(linkUrl === 'ok'){
+    toast(pick('urlSetByLink'));
+    /* リンクから設定した直後は、結果がわかるようにメッセージ付きで取り込む */
+    setTimeout(() => pullMaster({manual:true}), 1500);
+  }else{
+    if(linkUrl === 'bad') toast(pick('urlBadLink'));
+    pullMaster({});
+  }
 })();
 </script>
