@@ -1,0 +1,7 @@
+# 実データ（価格・仕入先の連絡先を含む）はGitHubに上げない
+_private/
+*.xlsx
+*_品目マスタ*.json
+
+# Claude アプリが自動で保存するファイル（公開しない）
+Claude outputs/
