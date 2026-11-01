@@ -40,7 +40,7 @@
 ## 初めて設定するときの手順（Windows）
 
 コードは GitHub の次の場所にある。各ファイルを開き、右上の「Copy raw file」（四角が2つ重なったアイコン）でコピーできる。
-https://github.com/yuya-kato-marino/onimaru-order-app/tree/main/invoice-bot/gas（フォルダ整理の前は、リポジトリの一番上）
+https://github.com/yuya-kato-marino/onimaru-order-app/tree/main/invoice-bot/gas
 
 ### A. LINE 公式アカウント（名前とプロバイダーが決まってから）
 

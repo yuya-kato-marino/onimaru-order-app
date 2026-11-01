@@ -62,11 +62,7 @@ Claude Code が `invoice-bot/` で作業を始めるときに最初に読む指�
 
 ## 7. 次にやること（2026-11-01 時点）
 
-1. **GitHub のフォルダ整理（優先）。** 一番上の `CLAUDE.md` はボット専用なのに、リポジトリ全体の指示書として読まれてしまう。
-   ブランチ `claude/line-invoice-reader-bot-cwdrz5` には正しいフォルダ構成（`invoice-bot/`）で push 済み。Claude がこのブランチで main の一番上の16ファイルを消してから、本人がブランチを main にマージすれば片付く（本人の了承を得てから）。
-   本人の PC で行う場合は PowerShell で：
-   `git pull` → `mkdir invoice-bot\gas, invoice-bot\test` → `git mv *.gs appsscript.json invoice-bot\gas\` → `git mv gas-mock.js run-tests.js run-flow-test.js invoice-bot\test\` → `git mv README.md CLAUDE.md invoice-bot\` → commit → push
-   整理後、README のファイルへのリンク（今は存在しないブランチを指している）を `main/invoice-bot/gas` に直す。
+1. **GitHub のフォルダ整理。** ブランチ `claude/line-invoice-reader-bot-cwdrz5` で、main の一番上に入った16ファイル（`invoice-bot/` 内と同じ中身）を削除し push 済み。**本人がこのブランチを main にマージすれば完了。**
 2. LINE 公式アカウントの作成（名前・プロバイダーを決める）→ README の A（手順1〜5）。
 3. スクリプト プロパティに `LINE_CHANNEL_ACCESS_TOKEN` を入れ、`setup()` をもう一度実行（BOT_USER_ID が入る）→ README の C（手順13〜17：Webhook URL・検証・`id` で userId・グループ招待）。
 4. Claude API キーを用意して `ANTHROPIC_API_KEY` に入れ、伝票画像3枚で README の D（手順18〜21：runSampleTest）。
