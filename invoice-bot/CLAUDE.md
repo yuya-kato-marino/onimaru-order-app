@@ -24,7 +24,7 @@ Claude Code が `invoice-bot/` で作業を始めるときに最初に読む指�
 | 支払い済みかどうか | 記録しない（重要ではない。合計金額が分かればよい）（2026-11-01） |
 | 報告 | 加藤さんの個別トーク。送り先は「設定」の「報告の送り先ID」で変えられる（将来3人グループへ） |
 | グループでの発言 | 一切しない |
-| git | Claude のGitHub連携に書き込み権限がなく push できない（403）。GitHub への反映は本人が行う（2026-11-01）。Claude は変更したファイルを渡す |
+| git | Claude は指定ブランチ `claude/line-invoice-reader-bot-cwdrz5` へ push まで行う（2026-11-01 本人の指示。当日夕方に GitHub 連携が通るようになった）。`la/` の「push は本人」とは別 |
 
 ## 3. 公開リポジトリに入れてよいもの・いけないもの
 
@@ -62,7 +62,9 @@ Claude Code が `invoice-bot/` で作業を始めるときに最初に読む指�
 
 ## 7. 次にやること（2026-11-01 時点）
 
-1. **GitHub のフォルダ整理（優先）。** 一番上の `CLAUDE.md` はボット専用なのに、リポジトリ全体の指示書として読まれてしまう。本人の PC の PowerShell で：
+1. **GitHub のフォルダ整理（優先）。** 一番上の `CLAUDE.md` はボット専用なのに、リポジトリ全体の指示書として読まれてしまう。
+   ブランチ `claude/line-invoice-reader-bot-cwdrz5` には正しいフォルダ構成（`invoice-bot/`）で push 済み。Claude がこのブランチで main の一番上の16ファイルを消してから、本人がブランチを main にマージすれば片付く（本人の了承を得てから）。
+   本人の PC で行う場合は PowerShell で：
    `git pull` → `mkdir invoice-bot\gas, invoice-bot\test` → `git mv *.gs appsscript.json invoice-bot\gas\` → `git mv gas-mock.js run-tests.js run-flow-test.js invoice-bot\test\` → `git mv README.md CLAUDE.md invoice-bot\` → commit → push
    整理後、README のファイルへのリンク（今は存在しないブランチを指している）を `main/invoice-bot/gas` に直す。
 2. LINE 公式アカウントの作成（名前・プロバイダーを決める）→ README の A（手順1〜5）。
