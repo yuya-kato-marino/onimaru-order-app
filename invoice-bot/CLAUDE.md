@@ -24,7 +24,7 @@ Claude Code が `invoice-bot/` で作業を始めるときに最初に読む指�
 | 支払い済みかどうか | 記録しない（重要ではない。合計金額が分かればよい）（2026-11-01） |
 | 報告 | 加藤さんの個別トーク。送り先は「設定」の「報告の送り先ID」で変えられる（将来3人グループへ） |
 | グループでの発言 | 一切しない |
-| git | このフォルダは Claude が指定ブランチへ push まで行う（2026-11-01 本人の指示）。`la/` の「push は本人」とは別 |
+| git | Claude のGitHub連携に書き込み権限がなく push できない（403）。GitHub への反映は本人が行う（2026-11-01）。Claude は変更したファイルを渡す |
 
 ## 3. 公開リポジトリに入れてよいもの・いけないもの
 
@@ -56,3 +56,15 @@ Claude Code が `invoice-bot/` で作業を始めるときに最初に読む指�
 - `test/run-tests.js`（正規化・検算の単体テスト）、`test/run-flow-test.js`（Apps Script をまねた通し試験）が通ることを確認。
 - 正解データ3枚を、AI がありがちな読み方（「05」を5と読む、配送料150を750と読む）をした想定で検算し、正解と一致することを確認（`_private/truth-test.js`）。
 - 実物の画像での確認（README の D）は、LINE アカウントと Claude API キーの用意後。
+- Claude 側から push できなかったため、本人が zip を GitHub の画面からアップロードして main に反映。
+  - **フォルダが崩れ、16ファイルがリポジトリの一番上（`la/` `tw/` と同じ階層）に入った。** `invoice-bot/gas/` などは GitHub 上にない。
+- 本人がスプレッドシート「請求書記録（タイ）」と Apps Script「請求書ボット（タイ）」を作り、README の B（手順6〜12：貼り付け・WEBHOOK_KEY・setup()・ウェブアプリのデプロイ）まで完了。exec URL は本人が控えている（ここには書かない）。
+
+## 7. 次にやること（2026-11-01 時点）
+
+1. **GitHub のフォルダ整理（優先）。** 一番上の `CLAUDE.md` はボット専用なのに、リポジトリ全体の指示書として読まれてしまう。本人の PC の PowerShell で：
+   `git pull` → `mkdir invoice-bot\gas, invoice-bot\test` → `git mv *.gs appsscript.json invoice-bot\gas\` → `git mv gas-mock.js run-tests.js run-flow-test.js invoice-bot\test\` → `git mv README.md CLAUDE.md invoice-bot\` → commit → push
+   整理後、README のファイルへのリンク（今は存在しないブランチを指している）を `main/invoice-bot/gas` に直す。
+2. LINE 公式アカウントの作成（名前・プロバイダーを決める）→ README の A（手順1〜5）。
+3. スクリプト プロパティに `LINE_CHANNEL_ACCESS_TOKEN` を入れ、`setup()` をもう一度実行（BOT_USER_ID が入る）→ README の C（手順13〜17：Webhook URL・検証・`id` で userId・グループ招待）。
+4. Claude API キーを用意して `ANTHROPIC_API_KEY` に入れ、伝票画像3枚で README の D（手順18〜21：runSampleTest）。
